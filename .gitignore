@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Neovim
+nvim/lazy-lock.json
+nvim/.DS_Store
