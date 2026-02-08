@@ -20,8 +20,8 @@ vim.keymap.set("n", "<S-h>", ":bprevious<CR>", { desc = "Previous buffer" })
 vim.keymap.set("n", "<S-l>", ":bnext<CR>", { desc = "Next buffer" })
 
 -- Move lines in visual mode
-vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv", { desc = "Move lines down" })
-vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv", { desc = "Move lines up" })
+vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv", { desc = "Move lines down", silent = true })
+vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv", { desc = "Move lines up", silent = true })
 
 -- Duplicate lines with highlight
 vim.keymap.set("n", "<A-j>", function()
@@ -78,8 +78,8 @@ vim.keymap.set("n", "<C-q>", "<cmd>close<CR>", { desc = "Close split" })
 vim.opt.clipboard = "unnamedplus"
 
 -- Move lines in NORMAL mode (add to your existing visual mode ones)
-vim.keymap.set("n", "<S-j>", ":m .+1<CR>==", { desc = "Move line down" })
-vim.keymap.set("n", "<S-k>", ":m .-2<CR>==", { desc = "Move line up" })
+vim.keymap.set("n", "<S-j>", "<cmd>m .+1<CR>==", { desc = "Move line down" })
+vim.keymap.set("n", "<S-k>", "<cmd>m .-2<CR>==", { desc = "Move line up" })
 
 -- o and O without auto-comments (just add blank line)
 vim.keymap.set("n", "o", "o<Esc>", { desc = "Add line below without comment" })
