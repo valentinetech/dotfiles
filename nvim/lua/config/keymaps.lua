@@ -16,8 +16,8 @@ vim.keymap.set("n", "<leader>q", ":bd<CR>", { desc = "Close buffer" })
 vim.keymap.set("n", "<leader>b", "<C-^>", { desc = "Previous buffer" })
 
 -- Buffer navigation
-vim.keymap.set("n", "<S-h>", ":bprevious<CR>", { desc = "Previous buffer" })
-vim.keymap.set("n", "<S-l>", ":bnext<CR>", { desc = "Next buffer" })
+vim.keymap.set("n", "<S-h>", ":bprevious<CR>", { desc = "Previous buffer", silent = true })
+vim.keymap.set("n", "<S-l>", ":bnext<CR>", { desc = "Next buffer", silent = true })
 
 -- Move lines in visual mode
 vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv", { desc = "Move lines down", silent = true })

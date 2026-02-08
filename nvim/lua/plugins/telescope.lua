@@ -70,8 +70,8 @@ return {
     
     -- File/buffer navigation
     vim.keymap.set("n", "<leader><leader>", "<cmd>Telescope find_files<CR>", { desc = "Find files" })
-    -- vim.keymap.set("n", "<leader>fb", "<cmd>Telescope buffers<CR>", { desc = "Find buffers" })
-    -- vim.keymap.set("n", "<leader>fr", "<cmd>Telescope oldfiles<CR>", { desc = "Recent files" })
+    vim.keymap.set("n", "<leader>,", "<cmd>Telescope buffers<CR>", { desc = "Find buffers" })
+    vim.keymap.set("n", "<leader>fr", "<cmd>Telescope oldfiles<CR>", { desc = "Recent files" })
     
     -- Search in current file - normal mode (no default text)
     vim.keymap.set("n", "ff", function()
