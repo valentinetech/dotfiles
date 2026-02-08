@@ -23,22 +23,11 @@ vim.keymap.set("n", "<S-l>", ":bnext<CR>", { desc = "Next buffer" })
 vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv", { desc = "Move lines down", silent = true })
 vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv", { desc = "Move lines up", silent = true })
 
--- Duplicate lines with highlight
-vim.keymap.set("n", "<A-j>", function()
-  vim.cmd("t.")
-  vim.highlight.on_yank({ timeout = 200 })
-end, { desc = "Duplicate line down" })
-
-vim.keymap.set("n", "<A-k>", function()
-  vim.cmd("t.-1")
-  vim.highlight.on_yank({ timeout = 200 })
-end, { desc = "Duplicate line up" })
-
-vim.keymap.set("v", "<A-j>", function()
-  vim.cmd("t'>+0")
-  vim.cmd("normal! gv")
-  vim.highlight.on_yank({ timeout = 200 })
-end, { desc = "Duplicate selection down" })
+-- Duplicate lines (Shift+Cmd+j/k)
+vim.keymap.set("n", "<D-S-j>", ":t.<CR>", { desc = "Duplicate line down", silent = true })
+vim.keymap.set("n", "<D-S-k>", ":t.-1<CR>", { desc = "Duplicate line up", silent = true })
+vim.keymap.set("v", "<D-S-j>", ":t'><CR>gv", { desc = "Duplicate selection down", silent = true })
+vim.keymap.set("v", "<D-S-k>", ":t'<-1<CR>gv", { desc = "Duplicate selection up", silent = true })
 
 --Better indenting in visual mode
 vim.keymap.set("v", "<", "<gv", opts)

@@ -45,6 +45,9 @@ config.animation_fps = 240
 -- This is where you actually apply your config choices
 config.keys = {
 	{ key = "s", mods = "CTRL", action = wezterm.action.DisableDefaultAssignment },
+	-- Pass Shift+Cmd+j/k to nvim for duplicate lines
+	{ key = "j", mods = "SHIFT|CMD", action = wezterm.action.DisableDefaultAssignment },
+	{ key = "k", mods = "SHIFT|CMD", action = wezterm.action.DisableDefaultAssignment },
 }
 -- Gruvbox Dark theme
 config.color_scheme = "Gruvbox dark, medium (base16)"
