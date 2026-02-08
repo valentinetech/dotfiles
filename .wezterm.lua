@@ -47,7 +47,7 @@ config.keys = {
 	{ key = "s", mods = "CTRL", action = wezterm.action.DisableDefaultAssignment },
 }
 -- Gruvbox Dark theme
-config.color_scheme = "Koda Dark"
+config.color_scheme = "Gruvbox dark, medium (base16)"
 
 config.font = wezterm.font("Zed Plex Mono")
 config.font_size = 16

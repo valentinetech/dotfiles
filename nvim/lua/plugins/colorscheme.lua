@@ -37,8 +37,8 @@ return {
       local function sync_wezterm_theme(theme_name)
         -- Map nvim themes to wezterm color schemes
         local theme_map = {
-          ["Koda Dark"] = "Koda Dark",
-          ["Koda Light"] = "Koda Light",
+          ["Koda Dark"] = "Gruvbox dark, medium (base16)",
+          ["Koda Light"] = "Gruvbox dark, medium (base16)",
           ["gruvbox"] = "Gruvbox dark, medium (base16)",
           ["gruvbox-material"] = "Gruvbox Material (Gogh)",
           ["tokyonight-night"] = "Tokyo Night",
@@ -139,7 +139,7 @@ return {
           -- Sync lualine theme
           local lualine_theme_map = {
             ["Koda Dark"] = "gruvbox_dark",
-            ["Koda Light"] = "gruvbox_light",
+            ["Koda Light"] = "gruvbox_dark",
             ["gruvbox"] = "gruvbox_dark",
             ["gruvbox-material"] = "gruvbox-material",
             ["tokyonight-night"] = "tokyonight",
