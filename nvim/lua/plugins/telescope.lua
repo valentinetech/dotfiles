@@ -96,5 +96,8 @@ return {
       local text = vim.fn.getregion(vim.fn.getpos('v'), vim.fn.getpos('.'), { type = vim.fn.mode() })
       builtin.grep_string({ search = table.concat(text, "\n") })
     end, { desc = "Search selection in project" })
+
+    -- Diagnostics (errors/warnings)
+    vim.keymap.set("n", "<leader>x", "<cmd>Telescope diagnostics<CR>", { desc = "Show all diagnostics" })
   end,
 }

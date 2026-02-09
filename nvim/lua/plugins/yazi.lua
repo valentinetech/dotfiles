@@ -5,7 +5,7 @@ return {
   },
   keys = {
     {
-      "<leader>e",
+      "<leader>E",
       function()
         require("yazi").yazi(nil, vim.fn.expand('%:p:h'))
       end,

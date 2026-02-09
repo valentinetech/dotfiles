@@ -41,6 +41,6 @@ return {
     })
 
     -- Open neo-tree in left buffer
-    vim.keymap.set("n", "<leader>E", ":Neotree toggle<CR>", { desc = "Toggle neo-tree" })
+    vim.keymap.set("n", "<leader>e", ":Neotree toggle<CR>", { desc = "Toggle neo-tree" })
   end,
 }
