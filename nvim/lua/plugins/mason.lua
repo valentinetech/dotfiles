@@ -106,7 +106,7 @@ return {
       })
 
       -- Enable all servers
-      vim.lsp.enable({ "vtsls", "vue_ls", "lua_ls", "html", "ruff" })
+      vim.lsp.enable({ "vtsls", "vue_ls", "lua_ls", "ruff" })
 
       -- Show diagnostics on hover
       vim.diagnostic.config({
@@ -159,9 +159,6 @@ return {
           vim.keymap.set("n", "<leader>k", vim.lsp.buf.hover, { buffer = ev.buf })
           vim.keymap.set("n", "<leader>rn", vim.lsp.buf.rename, { buffer = ev.buf })
           vim.keymap.set("n", "<leader>ga", vim.lsp.buf.code_action, { buffer = ev.buf })
-          vim.keymap.set("n", "<leader>d", vim.diagnostic.open_float, { buffer = ev.buf, desc = "Show diagnostic" })
-          vim.keymap.set("n", "[d", vim.diagnostic.goto_prev, { buffer = ev.buf, desc = "Previous diagnostic" })
-          vim.keymap.set("n", "]d", vim.diagnostic.goto_next, { buffer = ev.buf, desc = "Next diagnostic" })
         end,
       })
     end,

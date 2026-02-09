@@ -23,11 +23,11 @@ vim.keymap.set("n", "<S-l>", ":bnext<CR>", { desc = "Next buffer", silent = true
 vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv", { desc = "Move lines down", silent = true })
 vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv", { desc = "Move lines up", silent = true })
 
--- Duplicate lines (Shift+Cmd+j/k)
-vim.keymap.set("n", "<D-S-j>", ":t.<CR>", { desc = "Duplicate line down", silent = true })
-vim.keymap.set("n", "<D-S-k>", ":t.-1<CR>", { desc = "Duplicate line up", silent = true })
-vim.keymap.set("v", "<D-S-j>", ":t'><CR>gv", { desc = "Duplicate selection down", silent = true })
-vim.keymap.set("v", "<D-S-k>", ":t'<-1<CR>gv", { desc = "Duplicate selection up", silent = true })
+-- Duplicate lines (Alt+j/k)
+vim.keymap.set("n", "<A-j>", ":t.<CR>", { desc = "Duplicate line down", silent = true })
+vim.keymap.set("n", "<A-k>", ":t.-1<CR>", { desc = "Duplicate line up", silent = true })
+vim.keymap.set("v", "<A-j>", ":t'><CR>gv", { desc = "Duplicate selection down", silent = true })
+vim.keymap.set("v", "<A-k>", ":t'<-1<CR>gv", { desc = "Duplicate selection up", silent = true })
 
 --Better indenting in visual mode
 vim.keymap.set("v", "<", "<gv", opts)
@@ -80,6 +80,11 @@ vim.keymap.set("n", "<leader>Y", [["+Y]], { desc = "Copy line to system clipboar
 
 -- Clear search highlights with Esc
 vim.keymap.set("n", "<Esc>", "<cmd>nohlsearch<CR>", { desc = "Clear search highlights" })
+
+-- Diagnostic navigation (global, not just LSP)
+vim.keymap.set("n", "[d", vim.diagnostic.goto_prev, { desc = "Previous diagnostic" })
+vim.keymap.set("n", "]d", vim.diagnostic.goto_next, { desc = "Next diagnostic" })
+vim.keymap.set("n", "<leader>d", vim.diagnostic.open_float, { desc = "Show diagnostic" })
 
 -- Fix backspace in insert mode
 vim.keymap.set("i", "<BS>", "<BS>", { noremap = true, desc = "Backspace deletes character" })
