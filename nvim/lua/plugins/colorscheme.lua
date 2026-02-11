@@ -156,6 +156,24 @@ return {
 
           local lualine_theme = lualine_theme_map[theme_name] or "auto"
           require("lualine").setup({ options = { theme = lualine_theme } })
+
+          -- Sync bufferline colors with theme
+          local normal_bg = vim.api.nvim_get_hl(0, { name = "Normal" }).bg
+          local normal_fg = vim.api.nvim_get_hl(0, { name = "Normal" }).fg
+          local comment_fg = vim.api.nvim_get_hl(0, { name = "Comment" }).fg
+
+          if normal_bg and normal_fg then
+            -- Background for bufferline (slightly different from normal)
+            local bg_shade = bg == "dark" and "#1d2021" or "#f9f5d7"
+            local selected_bg = bg == "dark" and "#3c3836" or "#ebdbb2"
+
+            vim.api.nvim_set_hl(0, "BufferLineFill", { bg = bg_shade })
+            vim.api.nvim_set_hl(0, "BufferLineBackground", { fg = comment_fg, bg = bg_shade })
+            vim.api.nvim_set_hl(0, "BufferLineBufferSelected", { fg = normal_fg, bg = normal_bg, bold = true })
+            vim.api.nvim_set_hl(0, "BufferLineBufferVisible", { fg = normal_fg, bg = selected_bg })
+            vim.api.nvim_set_hl(0, "BufferLineModified", { fg = "#d79921", bg = bg_shade })
+            vim.api.nvim_set_hl(0, "BufferLineModifiedSelected", { fg = "#d79921", bg = normal_bg })
+          end
         end,
       })
     end,

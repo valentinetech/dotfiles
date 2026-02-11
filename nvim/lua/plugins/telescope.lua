@@ -99,5 +99,10 @@ return {
 
     -- Diagnostics (errors/warnings)
     vim.keymap.set("n", "<leader>x", "<cmd>Telescope diagnostics<CR>", { desc = "Show all diagnostics" })
+
+    -- Git
+    vim.keymap.set("n", "<leader>gs", "<cmd>Telescope git_status<CR>", { desc = "Git status (modified files)" })
+    vim.keymap.set("n", "<leader>gc", "<cmd>Telescope git_commits<CR>", { desc = "Git commits" })
+    vim.keymap.set("n", "<leader>gb", "<cmd>Telescope git_branches<CR>", { desc = "Git branches" })
   end,
 }

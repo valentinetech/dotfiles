@@ -58,7 +58,7 @@ return {
         local filename = {
             'filename',
             file_status = true,
-            path = 0,
+            path = 1,  -- Show relative path
         }
 
         local branch = {'branch', icon = {'', color={fg='#A6D4DE'}}, '|'}
@@ -73,9 +73,10 @@ return {
 			},
 			sections = {
                 lualine_a = { 'mode' },
-                lualine_b = { branch },
-                lualine_c = { diff, filename },
+                lualine_b = {},  -- Hide branch
+                lualine_c = { filename },  -- Just filename (no diff here)
 				lualine_x = {
+					diff,  -- Move diff to the right
 					{
 						function()
 							if vim.bo.modified then
