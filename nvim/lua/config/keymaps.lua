@@ -19,9 +19,9 @@ vim.keymap.set("n", "<leader>b", "<C-^>", { desc = "Previous buffer" })
 vim.keymap.set("n", "<S-h>", ":bprevious<CR>", { desc = "Previous buffer", silent = true })
 vim.keymap.set("n", "<S-l>", ":bnext<CR>", { desc = "Next buffer", silent = true })
 
--- Move lines in visual mode
-vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv", { desc = "Move lines down", silent = true })
-vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv", { desc = "Move lines up", silent = true })
+-- Move lines in visual mode (hold Shift+j/k to keep moving)
+vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv", { desc = "Move lines down", silent = true, noremap = true })
+vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv", { desc = "Move lines up", silent = true, noremap = true })
 
 -- Duplicate lines (Alt+j/k)
 vim.keymap.set("n", "<A-j>", ":t.<CR>", { desc = "Duplicate line down", silent = true })
@@ -54,10 +54,10 @@ vim.keymap.set("n", "<A-h>", ":vsplit<CR>", { desc = "Vertical split (side by si
 vim.keymap.set("n", "<A-l>", ":split<CR>", { desc = "Horizontal split (top/bottom)"})
 
 -- Resize splits with Alt+arrows
-vim.keymap.set("n", "<A-Left>", ":vertical resize -2<CR>", { desc = "Decrease width" })
-vim.keymap.set("n", "<A-Right>", ":vertical resize +2<CR>", { desc = "Increase width" })
-vim.keymap.set("n", "<A-Up>", ":resize -2<CR>", { desc = "Decrease height" })
-vim.keymap.set("n", "<A-Down>", ":resize +2<CR>", { desc = "Increase height" })
+vim.keymap.set("n", "<A-Left>", ":vertical resize -2<CR>", { desc = "Decrease width", silent = true })
+vim.keymap.set("n", "<A-Right>", ":vertical resize +2<CR>", { desc = "Increase width", silent = true })
+vim.keymap.set("n", "<A-Up>", ":resize -2<CR>", { desc = "Decrease height", silent = true })
+vim.keymap.set("n", "<A-Down>", ":resize +2<CR>", { desc = "Increase height", silent = true })
 
 -- Navigate splits with Ctrl+hjkl (already works)
 -- Close split

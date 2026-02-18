@@ -46,6 +46,10 @@ vim.opt.colorcolumn = ""
 vim.opt.cmdheight = 0  -- Hide command line when not in use
 vim.opt.backspace = "indent,eol,start"  -- Make backspace work like other editors
 
+-- Key timeouts
+vim.opt.timeoutlen = 300  -- Wait 300ms for key sequence completion
+vim.opt.ttimeoutlen = 10  -- Wait 10ms for key code completion (escape sequences)
+
 -- Auto-reload files when changed externally
 vim.opt.autoread = true
 vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold" }, {
