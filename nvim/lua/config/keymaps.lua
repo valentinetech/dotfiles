@@ -6,21 +6,34 @@ vim.keymap.set("n", "<C-j>", "<cmd>TmuxNavigateDown<cr>", { desc = "Navigate dow
 vim.keymap.set("n", "<C-k>", "<cmd>TmuxNavigateUp<cr>", { desc = "Navigate up" })
 vim.keymap.set("n", "<C-l>", "<cmd>TmuxNavigateRight<cr>", { desc = "Navigate right" })
 
--- Smart save: only run ESLint fix if there are diagnostics
+-- Async save + lint: save immediately, fix in background
 vim.keymap.set("n", "<leader>w", function()
-  local diagnostics = vim.diagnostic.get(0) -- Get diagnostics for current buffer
-  local has_errors = #diagnostics > 0
+  local bufnr = vim.api.nvim_get_current_buf()
 
-  if has_errors then
-    -- Has errors, run ESLint fix first
-    local ok, conform = pcall(require, "conform")
-    if ok then
-      conform.format({ timeout_ms = 3000 })
-    end
-  end
-
+  -- Save immediately
   vim.cmd("w")
-end, { desc = "Smart save (fix if errors)" })
+
+  -- Run ESLint fix asynchronously in background
+  local ok, conform = pcall(require, "conform")
+  if ok then
+    conform.format({
+      bufnr = bufnr,
+      async = true,
+      timeout_ms = 5000,
+    }, function(err)
+      if not err then
+        -- Auto-save after fix completes
+        vim.schedule(function()
+          if vim.api.nvim_buf_is_valid(bufnr) then
+            vim.api.nvim_buf_call(bufnr, function()
+              vim.cmd("silent! w")
+            end)
+          end
+        end)
+      end
+    end)
+  end
+end, { desc = "Save + async lint/fix" })
 
 -- Close buffer
 vim.keymap.set("n", "<leader>q", ":bd<CR>", { desc = "Close buffer" })
