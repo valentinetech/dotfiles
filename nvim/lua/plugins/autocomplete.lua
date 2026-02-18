@@ -24,6 +24,12 @@ return {
 
     sources = {
       default = { "lsp", "path", "snippets", "buffer" },
+      providers = {
+        lsp = {
+          min_keyword_length = 0,  -- Show completions immediately
+          score_offset = 100,  -- Prioritize LSP completions
+        },
+      },
     },
 
     completion = {

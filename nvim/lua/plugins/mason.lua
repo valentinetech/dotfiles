@@ -15,59 +15,66 @@ return {
     end,
   },
 
-  -- Mason-LSPConfig
+  -- LSP Configuration (separate from blink.cmp to avoid conflict)
   {
-    "williamboman/mason-lspconfig.nvim",
-    dependencies = { 
-      "williamboman/mason.nvim",
-      "neovim/nvim-lspconfig",
-    },
+    "williamboman/mason.nvim", -- Depend on Mason
+    event = { "BufReadPre", "BufNewFile" },
+    priority = 50,
     config = function()
-      require("mason-lspconfig").setup({
-        automatic_installation = true,
-      })
-    end,
-  },
+      local capabilities = require("blink.cmp").get_lsp_capabilities()
+      local mason_bin = vim.fn.stdpath("data") .. "/mason/bin"
+      local mason_packages = vim.fn.stdpath("data") .. "/mason/packages"
+      local volar_path = mason_packages .. "/vue-language-server/node_modules/@vue/language-server"
 
-  -- LSPConfig
-  {
-    "neovim/nvim-lspconfig",
-    dependencies = {
-      "hrsh7th/cmp-nvim-lsp",
-    },
-    config = function()
-      local capabilities = require("cmp_nvim_lsp").default_capabilities()
-
-      -- Default config for all servers
+      -- Default capabilities for all servers
       vim.lsp.config("*", {
         capabilities = capabilities,
       })
 
-      -- VTSLS (TypeScript/JavaScript/Vue)
-      vim.lsp.config("vtsls", {
-        filetypes = {
-          "javascript",
-          "javascriptreact",
-          "typescript",
-          "typescriptreact",
-          "vue",
+      -- TypeScript Language Server with Vue plugin
+      vim.lsp.config("ts_ls", {
+        cmd = { mason_bin .. "/typescript-language-server", "--stdio" },
+        filetypes = { "typescript", "javascript", "javascriptreact", "typescriptreact", "vue" },
+        root_markers = { "package.json", "tsconfig.json", ".git" },
+        init_options = {
+          plugins = {
+            {
+              name = "@vue/typescript-plugin",
+              location = volar_path,
+              languages = { "vue" },
+            },
+          },
+        },
+        settings = {
+          typescript = {
+            preferences = {
+              includePackageJsonAutoImports = "on",
+            },
+            suggest = {
+              completeFunctionCalls = true,
+              includeCompletionsForImportStatements = true,
+            },
+          },
         },
       })
-        vim.lsp.config("html", {
-          filetypes = { "html", "vue" },
-       })
 
-      -- Vue
-      vim.lsp.config("vue_ls", {
+      -- Vue Language Server (Volar)
+      vim.lsp.config("volar", {
+        cmd = { mason_bin .. "/vue-language-server", "--stdio" },
+        filetypes = { "vue" },
+        root_markers = { "package.json", ".git" },
         init_options = {
-          typescript = {
-            tsdk = vim.fn.stdpath("data") .. "/mason/packages/vtsls/node_modules/typescript/lib"
-          }
-        }
+          vue = {
+            hybridMode = false,
+          },
+        },
       })
 
-      -- Lua
+      -- Lua Language Server
       vim.lsp.config("lua_ls", {
+        cmd = { mason_bin .. "/lua-language-server" },
+        filetypes = { "lua" },
+        root_markers = { ".luarc.json", ".luarc.jsonc", ".luacheckrc", ".stylua.toml", "stylua.toml", ".git" },
         settings = {
           Lua = {
             diagnostics = { globals = { "vim" } },
@@ -75,19 +82,11 @@ return {
         },
       })
 
-      -- Basedpyright for Python (import resolution, type checking)
+      -- Basedpyright for Python
       vim.lsp.config("basedpyright", {
-        root_dir = function(fname)
-          return vim.fs.root(fname, { "pyproject.toml", ".git" })
-        end,
-        before_init = function(_, config)
-          local root = config.root_dir
-          if root then
-            config.settings.python = {
-              pythonPath = root .. "/.venv/bin/python",
-            }
-          end
-        end,
+        cmd = { mason_bin .. "/basedpyright-langserver", "--stdio" },
+        filetypes = { "python" },
+        root_markers = { "pyproject.toml", ".git" },
         settings = {
           basedpyright = {
             analysis = {
@@ -97,16 +96,15 @@ return {
         },
       })
 
-      -- Ruff LSP for Python diagnostics
+      -- Ruff for Python linting
       vim.lsp.config("ruff", {
-        on_attach = function(client, bufnr)
-          -- Disable hover (not needed from ruff)
-          client.server_capabilities.hoverProvider = false
-        end,
+        cmd = { mason_bin .. "/ruff", "server" },
+        filetypes = { "python" },
+        root_markers = { "pyproject.toml", "ruff.toml", ".ruff.toml", ".git" },
       })
 
-      -- Enable all servers
-      vim.lsp.enable({ "vtsls", "vue_ls", "lua_ls", "ruff" })
+      -- Enable all configured servers
+      vim.lsp.enable({ "ts_ls", "volar", "lua_ls", "basedpyright", "ruff" })
 
       -- Show diagnostics on hover
       vim.diagnostic.config({
