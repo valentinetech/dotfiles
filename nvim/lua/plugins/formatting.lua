@@ -5,28 +5,33 @@ return {
     event = { "BufWritePre" },
     cmd = { "ConformInfo" },
     config = function()
-      require("conform").setup({
+      local conform = require("conform")
+
+      conform.setup({
         formatters_by_ft = {
-          javascript = { "eslint_d" },
-          typescript = { "eslint_d" },
-          javascriptreact = { "eslint_d" },
-          typescriptreact = { "eslint_d" },
-          vue = { "eslint_d" },
+          javascript = { "eslint_monorepo" },
+          typescript = { "eslint_monorepo" },
+          javascriptreact = { "eslint_monorepo" },
+          typescriptreact = { "eslint_monorepo" },
+          vue = { "eslint_monorepo" },
           python = {
             "ruff_fix",        -- Fix auto-fixable lint errors
             "ruff_format",     -- Run Ruff formatter
             "ruff_organize_imports", -- Organize imports
           },
         },
-        format_on_save = {
-          timeout_ms = 500,
-          lsp_fallback = true,
-        },
       })
+
+      -- Register custom eslint formatter for monorepo
+      conform.formatters.eslint_monorepo = {
+        command = "/Users/valentinastauskela/Documents/GitHub/hpanel/node_modules/.bin/eslint",
+        args = { "--fix", "$FILENAME" },
+        stdin = false,
+      }
 
       -- Manual format keybinding
       vim.keymap.set({ "n", "v" }, "<leader>f", function()
-        require("conform").format({ async = true, lsp_fallback = true })
+        conform.format({ async = true, lsp_fallback = true })
       end, { desc = "Format file or range" })
     end,
   },

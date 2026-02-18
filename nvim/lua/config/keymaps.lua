@@ -6,8 +6,21 @@ vim.keymap.set("n", "<C-j>", "<cmd>TmuxNavigateDown<cr>", { desc = "Navigate dow
 vim.keymap.set("n", "<C-k>", "<cmd>TmuxNavigateUp<cr>", { desc = "Navigate up" })
 vim.keymap.set("n", "<C-l>", "<cmd>TmuxNavigateRight<cr>", { desc = "Navigate right" })
 
--- Save file
-vim.keymap.set("n", "<leader>w", "<cmd>w<CR>", { desc = "Save file" })
+-- Smart save: only run ESLint fix if there are diagnostics
+vim.keymap.set("n", "<leader>w", function()
+  local diagnostics = vim.diagnostic.get(0) -- Get diagnostics for current buffer
+  local has_errors = #diagnostics > 0
+
+  if has_errors then
+    -- Has errors, run ESLint fix first
+    local ok, conform = pcall(require, "conform")
+    if ok then
+      conform.format({ timeout_ms = 3000 })
+    end
+  end
+
+  vim.cmd("w")
+end, { desc = "Smart save (fix if errors)" })
 
 -- Close buffer
 vim.keymap.set("n", "<leader>q", ":bd<CR>", { desc = "Close buffer" })
