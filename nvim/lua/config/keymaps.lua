@@ -112,6 +112,14 @@ vim.keymap.set("n", "[d", vim.diagnostic.goto_prev, { desc = "Previous diagnosti
 vim.keymap.set("n", "]d", vim.diagnostic.goto_next, { desc = "Next diagnostic" })
 vim.keymap.set("n", "<leader>d", vim.diagnostic.open_float, { desc = "Show diagnostic" })
 
+-- Jump through errors only (ESLint + TypeScript)
+vim.keymap.set("n", "<leader><", function()
+  vim.diagnostic.goto_prev({ severity = vim.diagnostic.severity.ERROR })
+end, { desc = "Previous error" })
+vim.keymap.set("n", "<leader>>", function()
+  vim.diagnostic.goto_next({ severity = vim.diagnostic.severity.ERROR })
+end, { desc = "Next error" })
+
 -- Fix backspace in insert mode
 vim.keymap.set("i", "<BS>", "<BS>", { noremap = true, desc = "Backspace deletes character" })
 

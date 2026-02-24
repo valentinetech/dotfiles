@@ -1,10 +1,11 @@
 return {
   "saghen/blink.cmp",
   lazy = false,
+  priority = 1000, -- Load before LSP to provide capabilities
   dependencies = {
     "rafamadriz/friendly-snippets",
   },
-  version = "v0.*",
+  version = "v0.*", -- Use stable version with prebuilt binaries
   opts = {
     keymap = {
       preset = "default",
