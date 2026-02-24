@@ -35,8 +35,28 @@ vim.keymap.set("n", "<leader>w", function()
   end
 end, { desc = "Save + async lint/fix" })
 
--- Close buffer
-vim.keymap.set("n", "<leader>q", ":bd<CR>", { desc = "Close buffer" })
+-- Close buffer (switches to another buffer first to prevent Neo-tree from expanding)
+vim.keymap.set("n", "<leader>q", function()
+  local current_buf = vim.api.nvim_get_current_buf()
+  local buffers = vim.fn.getbufinfo({ buflisted = 1 })
+
+  -- Find another buffer to switch to
+  local target_buf = nil
+  for _, buf in ipairs(buffers) do
+    if buf.bufnr ~= current_buf then
+      target_buf = buf.bufnr
+      break
+    end
+  end
+
+  -- If there's another buffer, switch to it first
+  if target_buf then
+    vim.api.nvim_set_current_buf(target_buf)
+  end
+
+  -- Delete the original buffer
+  vim.api.nvim_buf_delete(current_buf, { force = false })
+end, { desc = "Close buffer" })
 
 -- Previous buffer
 vim.keymap.set("n", "<leader>b", "<C-^>", { desc = "Previous buffer" })
