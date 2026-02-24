@@ -66,18 +66,31 @@ return {
           signs = { add = "+", change = "~", delete = "-" },
         },
         mappings = {
-          apply = "gh",
-          reset = "gH",
-          textobject = "gh",
-          goto_first = "[H",
-          goto_prev = "[h",
-          goto_next = "]h",
-          goto_last = "]H",
+          apply = "",     -- Disable default
+          reset = "",     -- Disable default
+          textobject = "",  -- Disable default
+          goto_first = "",  -- Disable default
+          goto_prev = "",   -- Disable default
+          goto_next = "",   -- Disable default
+          goto_last = "",   -- Disable default
         },
       })
 
-      -- Toggle diff overlay to see actual changes
-      vim.keymap.set("n", "<leader>gd", "<cmd>lua MiniDiff.toggle_overlay()<cr>", { desc = "Toggle diff overlay" })
+      -- Cycle through git hunks (wraps to first when reaching last)
+      vim.keymap.set("n", "<leader>gg", function()
+        local current_line = vim.fn.line('.')
+        require('mini.diff').goto_hunk('next')
+        local new_line = vim.fn.line('.')
+
+        -- If we didn't move, we're at/past the last hunk, wrap to first
+        if current_line == new_line then
+          require('mini.diff').goto_hunk('first')
+        end
+      end, { desc = "Cycle through git hunks" })
+
+      vim.keymap.set("n", "<leader>ga", function() require('mini.diff').apply_hunks() end, { desc = "Git apply/stage hunk" })
+      vim.keymap.set("n", "<leader>gr", function() require('mini.diff').reset_hunks() end, { desc = "Git reset hunk" })
+      vim.keymap.set("n", "<leader>gd", function() require('mini.diff').toggle_overlay() end, { desc = "Toggle diff overlay" })
     end,
   },
 }

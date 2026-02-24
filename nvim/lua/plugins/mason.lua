@@ -24,7 +24,24 @@ return {
       local capabilities = require("blink.cmp").get_lsp_capabilities()
       local mason_bin = vim.fn.stdpath("data") .. "/mason/bin"
       local mason_packages = vim.fn.stdpath("data") .. "/mason/packages"
-      local volar_path = mason_packages .. "/vue-language-server/node_modules/@vue/language-server"
+      local vue_typescript_plugin = mason_packages .. "/vue-language-server/node_modules/@vue/typescript-plugin"
+
+      -- Find TypeScript SDK (handle monorepos)
+      local function find_tsdk()
+        local root = vim.fs.root(0, { "package.json", ".git" })
+        if not root then return nil end
+
+        -- Try current directory
+        local tsdk = root .. "/node_modules/typescript/lib"
+        if vim.fn.isdirectory(tsdk) == 1 then return tsdk end
+
+        -- Try parent directory (monorepo root)
+        local parent = vim.fn.fnamemodify(root, ":h")
+        tsdk = parent .. "/node_modules/typescript/lib"
+        if vim.fn.isdirectory(tsdk) == 1 then return tsdk end
+
+        return nil
+      end
 
       -- Default capabilities for all servers
       vim.lsp.config("*", {
@@ -40,7 +57,7 @@ return {
           plugins = {
             {
               name = "@vue/typescript-plugin",
-              location = volar_path,
+              location = vue_typescript_plugin,
               languages = { "vue" },
             },
           },
@@ -65,7 +82,10 @@ return {
         root_markers = { "package.json", ".git" },
         init_options = {
           vue = {
-            hybridMode = false,
+            hybridMode = true,  -- Let ts_ls handle script, Volar handles template
+          },
+          typescript = {
+            tsdk = find_tsdk(),  -- Find TypeScript in monorepo
           },
         },
       })
