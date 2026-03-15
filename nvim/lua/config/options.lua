@@ -39,7 +39,7 @@ vim.opt.undodir = os.getenv("HOME") .. "/.vim/undodir"
 vim.opt.undofile = true
 
 -- Misc
-vim.opt.updatetime = 50
+vim.opt.updatetime = 250
 vim.opt.clipboard = "unnamedplus"
 vim.opt.mouse = "a"
 vim.opt.colorcolumn = ""

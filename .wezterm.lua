@@ -39,8 +39,8 @@ config.keys = {
 	{ key = "z", mods = "CTRL|SHIFT", action = wezterm.action.DisableDefaultAssignment },
 }
 --max fps
-config.max_fps = 240
-config.animation_fps = 240
+config.max_fps = 60
+config.animation_fps = 1
 
 -- This is where you actually apply your config choices
 config.keys = {
@@ -50,13 +50,12 @@ config.keys = {
 	{ key = "k", mods = "SHIFT|CMD", action = wezterm.action.DisableDefaultAssignment },
 }
 -- Gruvbox Dark theme
-config.color_scheme = "Gruvbox dark, medium (base16)"
+config.color_scheme = "Kanagawa (Gogh)"
 
 config.font = wezterm.font("Zed Plex Mono")
 config.font_size = 16
 
 config.window_decorations = "RESIZE"
-config.macos_window_background_blur = 10
 config.window_padding = {
 	left = 0,
 	right = 0,

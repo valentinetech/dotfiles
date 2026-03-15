@@ -31,6 +31,7 @@ return {
           "--column",
           "--smart-case",
           "--hidden",
+          "--glob", "!.git/*",
         },
         layout_strategy = "vertical",
         layout_config = {
