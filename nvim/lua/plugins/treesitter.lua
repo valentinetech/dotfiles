@@ -22,7 +22,8 @@ return {
           "lua",
           "vim",
           "vimdoc",
-          "vue", -- Add vue parser
+          "vue",
+          "php",
         },
         incremental_selection = {
           enable = true,

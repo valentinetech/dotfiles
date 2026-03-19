@@ -1,7 +1,9 @@
 return {
-  -- Mason: LSP installer
+  -- Mason + LSP Configuration
   {
-    "williamboman/mason.nvim",
+    "williamboman/mason.nvim", -- Depend on Mason
+    event = { "BufReadPre", "BufNewFile" },
+    priority = 50,
     config = function()
       require("mason").setup({
         ui = {
@@ -12,15 +14,7 @@ return {
           }
         }
       })
-    end,
-  },
 
-  -- LSP Configuration (separate from blink.cmp to avoid conflict)
-  {
-    "williamboman/mason.nvim", -- Depend on Mason
-    event = { "BufReadPre", "BufNewFile" },
-    priority = 50,
-    config = function()
       local capabilities = require("blink.cmp").get_lsp_capabilities()
       local mason_bin = vim.fn.stdpath("data") .. "/mason/bin"
       local mason_packages = vim.fn.stdpath("data") .. "/mason/packages"
@@ -116,6 +110,13 @@ return {
         },
       })
 
+      -- Intelephense for PHP
+      vim.lsp.config("intelephense", {
+        cmd = { mason_bin .. "/intelephense", "--stdio" },
+        filetypes = { "php" },
+        root_markers = { "composer.json", ".git" },
+      })
+
       -- Ruff for Python linting
       vim.lsp.config("ruff", {
         cmd = { mason_bin .. "/ruff", "server" },
@@ -124,7 +125,7 @@ return {
       })
 
       -- Enable all configured servers
-      vim.lsp.enable({ "ts_ls", "volar", "lua_ls", "basedpyright", "ruff" })
+      vim.lsp.enable({ "ts_ls", "volar", "lua_ls", "basedpyright", "ruff", "intelephense" })
 
       -- Show diagnostics on hover
       vim.diagnostic.config({
