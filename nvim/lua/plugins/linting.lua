@@ -7,9 +7,10 @@ return {
 
     -- Configure ESLint to use monorepo root
     lint.linters.eslint.cmd = function()
-      local root_dir = vim.fs.root(0, { "package.json", ".git" })
+      -- Find git root first (monorepo root), then fall back to package.json root
+      local git_root = vim.fs.root(0, { ".git" })
+      local root_dir = git_root or vim.fs.root(0, { "package.json" })
       if root_dir then
-        -- Look for eslint in workspace root first
         local workspace_eslint = vim.fn.findfile("node_modules/.bin/eslint", root_dir .. ";")
         if workspace_eslint ~= "" then
           return workspace_eslint
@@ -32,9 +33,10 @@ return {
     vim.api.nvim_create_autocmd({ "BufEnter", "BufWritePost", "InsertLeave" }, {
       group = lint_augroup,
       callback = function()
-        pcall(function()
-          lint.try_lint()
-        end)
+        local ok, cmd = pcall(lint.linters.eslint.cmd)
+        if ok and cmd and vim.fn.executable(cmd) == 1 then
+          pcall(lint.try_lint)
+        end
       end,
     })
 
