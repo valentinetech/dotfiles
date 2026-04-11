@@ -25,6 +25,10 @@ return {
           ["<cr>"] = "open",
           ["h"] = "close_node",
           ["l"] = "open",
+          ["<C-h>"] = "none",
+          ["<C-j>"] = "none",
+          ["<C-k>"] = "none",
+          ["<C-l>"] = "none",
         },
       },
       filesystem = {
