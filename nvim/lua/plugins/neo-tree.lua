@@ -37,6 +37,7 @@ return {
           enabled = true,
         },
         use_libuv_file_watcher = true,
+        refresh_on_open = true,
       },
     })
 

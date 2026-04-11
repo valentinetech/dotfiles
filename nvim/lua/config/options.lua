@@ -69,6 +69,22 @@ vim.api.nvim_create_autocmd("TextYankPost", {
     vim.highlight.on_yank({ timeout = 200 })
   end,
 })
+-- Auto-close buffer if file no longer exists
+vim.api.nvim_create_autocmd({ "BufEnter", "FocusGained" }, {
+  pattern = "*",
+  callback = function()
+    local buf = vim.api.nvim_get_current_buf()
+    local name = vim.api.nvim_buf_get_name(buf)
+    if name ~= "" and vim.fn.filereadable(name) == 0 and not vim.bo[buf].modified then
+      vim.schedule(function()
+        if vim.api.nvim_buf_is_valid(buf) then
+          vim.cmd("bdelete " .. buf)
+        end
+      end)
+    end
+  end,
+})
+
 -- Disable auto-comments on new line
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "*",
