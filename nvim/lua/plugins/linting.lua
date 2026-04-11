@@ -30,7 +30,7 @@ return {
     -- Trigger linting on multiple events for real-time feedback
     local lint_augroup = vim.api.nvim_create_augroup("lint", { clear = true })
 
-    vim.api.nvim_create_autocmd({ "BufEnter", "BufWritePost", "InsertLeave" }, {
+    vim.api.nvim_create_autocmd({ "BufWritePost" }, {
       group = lint_augroup,
       callback = function()
         local ok, cmd = pcall(lint.linters.eslint.cmd)

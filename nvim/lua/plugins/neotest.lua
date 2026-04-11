@@ -11,10 +11,21 @@ return {
   config = function()
     require("neotest").setup({
       adapters = {
-        require("neotest-vitest"),
+        require("neotest-vitest")({
+          vitestCommand = "npx vitest --reporter=verbose --no-coverage --pool=forks",
+        }),
       },
       quickfix = {
         open = false,
+      },
+      discovery = {
+        enabled = false,
+      },
+      running = {
+        concurrent = true,
+      },
+      output = {
+        open_on_run = false,
       },
     })
 
