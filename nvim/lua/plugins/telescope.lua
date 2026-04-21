@@ -17,6 +17,8 @@ return {
           "^.git/",
           "node_modules",
           "%.lock",
+          "package-lock%.json",
+          "yarn%.lock",
           "translations/",
           "translationsV2/",
           "coverage/",
@@ -62,6 +64,8 @@ return {
             "--glob", "!translationsV2/*",
             "--glob", "!coverage/*",
             "--glob", "!autotests/*",
+            "--glob", "!package-lock.json",
+            "--glob", "!yarn.lock",
           },
         },
       },
@@ -97,6 +101,18 @@ return {
       local text = vim.fn.getregion(vim.fn.getpos('v'), vim.fn.getpos('.'), { type = vim.fn.mode() })
       builtin.grep_string({ search = table.concat(text, "\n") })
     end, { desc = "Search selection in project" })
+
+    -- Grep word under cursor
+    vim.keymap.set("n", "sw", function()
+      builtin.grep_string({ word_match = "-w" })
+    end, { desc = "Search word under cursor" })
+
+    -- LSP symbols
+    vim.keymap.set("n", "<leader>ls", "<cmd>Telescope lsp_document_symbols<CR>", { desc = "LSP document symbols" })
+    vim.keymap.set("n", "<leader>lS", "<cmd>Telescope lsp_dynamic_workspace_symbols<CR>", { desc = "LSP workspace symbols" })
+
+    -- Resume last search
+    vim.keymap.set("n", "<leader>sr", "<cmd>Telescope resume<CR>", { desc = "Resume last search" })
 
     -- Diagnostics (errors/warnings)
     vim.keymap.set("n", "<leader>x", "<cmd>Telescope diagnostics<CR>", { desc = "Show all diagnostics" })
