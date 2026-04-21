@@ -47,6 +47,9 @@ return {
           border = "rounded",
         },
       },
+      ghost_text = { enabled = true },
+      list = { selection = { preselect = true, auto_insert = true } },
+      trigger = { show_on_keyword = true, show_on_trigger_character = true },
     },
 
     cmdline = {
