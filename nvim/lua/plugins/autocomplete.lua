@@ -54,6 +54,10 @@ return {
       trigger = { show_on_keyword = true, show_on_trigger_character = true },
     },
 
+    enabled = function()
+      return vim.bo.filetype ~= "markdown"
+    end,
+
     cmdline = {
       enabled = false,
     },

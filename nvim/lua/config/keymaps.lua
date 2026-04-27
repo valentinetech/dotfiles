@@ -16,19 +16,25 @@ vim.keymap.set("n", "<leader>w", function()
   -- Run ESLint fix asynchronously in background
   local ok, conform = pcall(require, "conform")
   if ok then
+    vim.notify("Formatting...", vim.log.levels.INFO, { title = "Conform" })
     conform.format({
       bufnr = bufnr,
       async = true,
       timeout_ms = 5000,
     }, function(err)
-      if not err then
-        -- Auto-save after fix completes
+      if err then
+        vim.schedule(function()
+          local first_line = tostring(err):match("([^\n]+)") or tostring(err)
+          vim.notify(first_line, vim.log.levels.WARN, { title = "Conform" })
+        end)
+      else
         vim.schedule(function()
           if vim.api.nvim_buf_is_valid(bufnr) then
             vim.api.nvim_buf_call(bufnr, function()
               vim.cmd("silent! w")
             end)
           end
+          vim.notify("Formatted", vim.log.levels.INFO, { title = "Conform" })
         end)
       end
     end)
