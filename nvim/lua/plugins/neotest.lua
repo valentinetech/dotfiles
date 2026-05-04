@@ -7,12 +7,18 @@ return {
     "nvim-neotest/nvim-nio",
     -- Test adapters
     "marilari88/neotest-vitest",
+    "thenbe/neotest-playwright",
   },
   config = function()
     require("neotest").setup({
       adapters = {
         require("neotest-vitest")({
           vitestCommand = "npx vitest --reporter=verbose --no-coverage --pool=forks",
+        }),
+        require("neotest-playwright").adapter({
+          options = {
+            headed = false,
+          },
         }),
       },
       quickfix = {
