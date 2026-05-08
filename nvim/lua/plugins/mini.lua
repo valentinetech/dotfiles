@@ -90,7 +90,7 @@ return {
 
       vim.keymap.set("n", "<leader>ga", function() require('mini.diff').apply_hunks() end, { desc = "Git apply/stage hunk" })
       vim.keymap.set("n", "<leader>gr", function() require('mini.diff').reset_hunks() end, { desc = "Git reset hunk" })
-      vim.keymap.set("n", "<leader>gd", function() require('mini.diff').toggle_overlay() end, { desc = "Toggle diff overlay" })
+      vim.keymap.set("n", "<leader>df", function() require('mini.diff').toggle_overlay() end, { desc = "Toggle diff overlay" })
     end,
   },
 }
