@@ -117,6 +117,24 @@ return {
         root_markers = { "composer.json", ".git" },
       })
 
+      -- gopls for Go
+      vim.lsp.config("gopls", {
+        cmd = { mason_bin .. "/gopls" },
+        filetypes = { "go", "gomod", "gowork", "gotmpl" },
+        root_markers = { "go.work", "go.mod", ".git" },
+        settings = {
+          gopls = {
+            analyses = {
+              unusedparams = true,
+            },
+            staticcheck = true,
+            gofumpt = false,
+            usePlaceholders = true,
+            completeUnimported = true,
+          },
+        },
+      })
+
       -- Ruff for Python linting
       vim.lsp.config("ruff", {
         cmd = { mason_bin .. "/ruff", "server" },
@@ -125,7 +143,7 @@ return {
       })
 
       -- Enable all configured servers
-      vim.lsp.enable({ "ts_ls", "volar", "lua_ls", "basedpyright", "ruff", "intelephense" })
+      vim.lsp.enable({ "ts_ls", "volar", "lua_ls", "basedpyright", "ruff", "intelephense", "gopls" })
 
       -- Show diagnostics on hover
       vim.diagnostic.config({

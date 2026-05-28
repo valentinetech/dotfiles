@@ -24,6 +24,9 @@ return {
           "vimdoc",
           "vue",
           "php",
+          "go",
+          "gomod",
+          "gosum",
         },
         incremental_selection = {
           enable = true,

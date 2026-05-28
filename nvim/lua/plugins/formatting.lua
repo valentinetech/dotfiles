@@ -19,7 +19,13 @@ return {
             "ruff_format",     -- Run Ruff formatter
             "ruff_organize_imports", -- Organize imports
           },
+          go = { "goimports", "gofmt" },
         },
+        format_on_save = function(bufnr)
+          if vim.bo[bufnr].filetype == "go" then
+            return { timeout_ms = 2000, lsp_format = "fallback" }
+          end
+        end,
       })
 
       -- Register custom eslint formatter for monorepo
@@ -45,6 +51,9 @@ return {
         ensure_installed = {
           "eslint_d",
           "ruff",
+          "gopls",
+          "goimports",
+          "gofumpt",
         },
       })
     end,
