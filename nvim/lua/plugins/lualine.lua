@@ -48,13 +48,6 @@ return {
             end,
         }
 
-        local diff = {
-            'diff',
-            colored = true,
-            symbols = { added = ' ', modified = ' ', removed = ' ' }, -- changes diff symbols
-            -- cond = hide_in_width,
-        }
-
         local filename = {
             'filename',
             file_status = true,
@@ -76,8 +69,7 @@ return {
                 lualine_b = {},  -- Hide branch
                 lualine_c = { filename },  -- Just filename (no diff here)
 				lualine_x = {
-					diff,  -- Move diff to the right
-					{
+						{
 						function()
 							if vim.bo.modified then
 								return "●"

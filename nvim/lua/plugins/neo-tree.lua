@@ -10,8 +10,8 @@ return {
     require("neo-tree").setup({
       close_if_last_window = false,
       popup_border_style = "rounded",
-      enable_git_status = true,
-      enable_diagnostics = true,
+      enable_git_status = false,
+      enable_diagnostics = false,
       window = {
         position = "left",
         width = 30,
@@ -40,8 +40,8 @@ return {
         follow_current_file = {
           enabled = true,
         },
-        use_libuv_file_watcher = true,
-        refresh_on_open = true,
+        use_libuv_file_watcher = false,
+        refresh_on_open = false,
       },
     })
 
