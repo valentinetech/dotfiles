@@ -9,11 +9,11 @@ return {
 
       conform.setup({
         formatters_by_ft = {
-          javascript = { "eslint_monorepo" },
-          typescript = { "eslint_monorepo" },
-          javascriptreact = { "eslint_monorepo" },
-          typescriptreact = { "eslint_monorepo" },
-          vue = { "eslint_monorepo" },
+          javascript = { "eslint_monorepo", "prettier" },
+          typescript = { "eslint_monorepo", "prettier" },
+          javascriptreact = { "eslint_monorepo", "prettier" },
+          typescriptreact = { "eslint_monorepo", "prettier" },
+          vue = { "eslint_monorepo", "prettier" },
           python = {
             "ruff_fix",        -- Fix auto-fixable lint errors
             "ruff_format",     -- Run Ruff formatter
@@ -50,6 +50,7 @@ return {
       require("mason-tool-installer").setup({
         ensure_installed = {
           "eslint_d",
+          "prettier",
           "ruff",
           "gopls",
           "goimports",

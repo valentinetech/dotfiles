@@ -6,7 +6,7 @@ return {
   config = function()
     require("telescope._extensions.frecency").setup({
       db_safe_mode = false,
-      auto_validate = false,
+      auto_validate = true,
     })
     require("telescope").load_extension("frecency")
 
