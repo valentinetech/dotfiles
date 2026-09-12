@@ -62,6 +62,7 @@ config.window_padding = {
 	top = 0,
 	bottom = 0,
 }
-config.enable_tab_bar = false
+config.enable_tab_bar = true
+config.hide_tab_bar_if_only_one_tab = true
 
 return config
