@@ -1,0 +1,132 @@
+prSections:
+  - title: Mine
+    filters: is:open author:@me draft:false
+  - title: Mine, draft
+    filters: is:open author:@me draft:true
+  - title: Mine, needs approval
+    filters: is:open author:@me draft:false review:required
+  # user-review-requested = requested from me by name, not via a team I'm in.
+  # reviewed-by:dex-review = the bot has already reviewed.
+  # review:required = review decision still REVIEW_REQUIRED, i.e. no human approval yet
+  # (the bot's approval alone doesn't satisfy it). -review:approved would not drop PRs
+  # with human approvals but no review decision.
+  - title: Review, hpanel
+    filters: is:open user-review-requested:@me reviewed-by:dex-review review:required repo:hostinger/hpanel
+  - title: Review, other
+    filters: is:open user-review-requested:@me reviewed-by:dex-review review:required -repo:hostinger/hpanel
+  # Open PRs I've reviewed in any state (approve, request changes, review comment).
+  # A plain conversation comment is `commenter:@me`, but gh-dash's search type has no OR,
+  # and `involves:@me` is too broad (it includes review requests and mentions).
+  - title: Reviewed by me
+    filters: is:open reviewed-by:@me -author:@me
+
+issuesSections:
+  - title: Assigned
+    filters: is:open assignee:@me
+
+defaults:
+  view: prs
+  prsLimit: 30
+  issuesLimit: 20
+  refetchIntervalMinutes: 5
+  preview:
+    # Open from the start: when it starts hidden, gh-dash has no selected row until
+    # the cursor moves, so `p` shows an empty preview and actions say "nothing selected".
+    # `p` hides it when the full table is needed.
+    open: true
+    # Fractions of the screen: width applies when the preview is on the right,
+    # height when it is at the bottom.
+    width: 0.6
+    height: 0.75
+    position: bottom
+  layout:
+    prs:
+      repo:
+        width: 24
+      author:
+        hidden: true
+      labels:
+        hidden: false
+        width: 28
+
+# Do not narrow sections to the repo the popup was opened from (toggle per section with `t`)
+smartFilteringAtLaunch: false
+
+# `d` pipes `gh pr diff` into diffnav (delta + a file tree). Uses the build from
+# build-diffnav.sh: j/k scroll the diff, J/K half page, arrows move between files.
+pager:
+  diff: diffnav-vim  # in ~/.local/bin; gh execs the pager without a shell, so no ~ here
+
+repoPaths:
+  "*": ~/Documents/GitHub/*
+
+keybindings:
+  universal:
+    # Same key that opens the tmux popup closes it. Overriding the "quit" builtin
+    # would replace q, so this interrupts gh-dash (the command's parent) instead.
+    # The signal is delayed so it lands after gh-dash resumes from running the command.
+    - key: f10
+      name: close
+      command: "p=$PPID; ( sleep 0.3; kill -INT $p ) > /dev/null 2>&1 &!"
+    # Arrows drive the table: left/right = section tabs, up/down = PR rows.
+    - key: up
+      builtin: up
+    - key: down
+      builtin: down
+    - key: left
+      builtin: prevSection
+    - key: right
+      builtin: nextSection
+    # hjkl drives the preview: j/k page it up and down (replaces Ctrl+u/Ctrl+d).
+    - key: k
+      builtin: pageUp
+    - key: j
+      builtin: pageDown
+  prs:
+    # h/l switch preview tabs (Overview, Activity, Commits, Checks, Files)
+    - key: h
+      builtin: prevSidebarTab
+    - key: l
+      builtin: nextSidebarTab
+    # Pick any link from the PR body/comments with fzf and open it in the browser
+    - key: P
+      name: open link from PR
+      command: >
+        gh pr view {{.PrNumber}} --repo {{.RepoName}} --comments
+        | grep -oE 'https?://[^] )>"]+' | sort -u
+        | fzf --prompt='open link> ' --height=60% --reverse
+        | xargs -I{} open {} ; true
+    # Edit labels with fzf multi-select (current labels pre-selected, Tab toggles, Enter applies)
+    - key: L
+      name: edit labels
+      command: ~/Documents/GitHub/dotfiles/gh-dash/pr-labels.sh {{.RepoName}} {{.PrNumber}}
+    # List failing checks for the selected PR, pick one, open its log in the browser
+    - key: F
+      name: open failing check
+      command: >
+        gh pr checks {{.PrNumber}} --repo {{.RepoName}} --json name,bucket,link
+        --jq '.[] | select(.bucket=="fail") | "\(.name)\t\(.link)"'
+        | fzf --prompt='failing check> ' --height=60% --reverse --with-nth=1 --delimiter='\t'
+        | cut -f2 | xargs -I{} open {} ; true
+    # Browse the PR's Actions runs, jobs and logs in gh-enhance. Uses the build from
+    # build-gh-enhance.sh so `q` quits (upstream only has ctrl+c).
+    - key: S
+      name: actions
+      command: ~/.local/bin/gh-enhance-q https://github.com/{{.RepoName}}/pull/{{.PrNumber}}
+    - key: C
+      command: >
+        tmux new-window -n {{.RepoName}} -c {{.RepoPath}}
+        "git fetch origin && gh pr checkout {{.PrNumber}} && exec zsh"
+    # Approve after a y/n confirm, no comment prompt (custom keys take precedence over the builtin).
+    # Press r afterwards to refresh the row.
+    - key: v
+      name: approve
+      command: >
+        printf 'Approve {{.RepoName}}#{{.PrNumber}}? [y/N] '; read -k1 a; echo;
+        [[ $a == [yY] ]] && gh pr review {{.PrNumber}} --repo {{.RepoName}} --approve; true
+
+theme:
+  ui:
+    sectionsShowCount: true
+    table:
+      showSeparator: true

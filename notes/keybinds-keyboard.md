@@ -12,6 +12,7 @@ Prefix: `Ctrl+b`
 | `F7` | Kill current pane |
 | `F8` | Session switcher (`choose-tree -Zs`) |
 | `F9` | New session (prompts for name) |
+| `F10` | GitHub PR dashboard popup (gh-dash, all repos; `q` to close) |
 | `PageUp` | Enter copy mode and scroll up |
 
 ### With prefix (`Ctrl+b` then...)
@@ -20,6 +21,7 @@ Prefix: `Ctrl+b`
 | `r` | Reload config |
 | `c` | New window (prompts for name, in current path) |
 | `t` | Floating terminal popup (in current path) |
+| `p` / `n` | Previous / next window (tmux defaults) |
 | `h` / `j` / `k` / `l` | Resize pane left/down/up/right (repeatable, 5 cells) |
 | `m` | Maximize/zoom pane |
 
@@ -39,6 +41,61 @@ Prefix: `Ctrl+b`
 | `PageUp` / `PageDown` | Scroll |
 
 Notes: mouse support is on. Old bindings unbound: `C-M-h/j/k/l/Left/Down/Up/Right`, `C-M-q`, `C-Space`.
+
+---
+
+## gh-dash (F10 popup)
+
+Starts with the preview open at the bottom (keep it that way: starting hidden leaves no row selected until the cursor moves).
+
+### Navigation
+Arrows drive the table, hjkl drives the preview.
+
+| Key | Action |
+|---|---|
+| `←` / `→` | Previous / next section tab (Mine, Mine draft, Mine needs approval, Review hpanel, Review other, Reviewed by me). Review sections only show PRs where I'm requested by name (not via a team), dex-review has reviewed, and no human has approved yet. Reviewed by me = open PRs where I approved, requested changes or left a review comment (plain conversation comments don't count) |
+| `↑` / `↓` | Previous / next PR row |
+| `g` / `G` | First / last PR |
+| `p` | Hide / show the preview (full-width table while hidden) |
+| `h` / `l` | Previous / next preview tab (Overview, Activity, Commits, Checks, Files Changed) |
+| `k` / `j` | Page the preview up / down |
+| `e` | Expand the PR description |
+| `/` | Edit the section filter (Enter applies) |
+| `t` | Toggle smart filtering (scope section to the repo gh-dash was opened from) |
+| `s` | Switch between PRs and Issues views |
+| `r` / `R` | Refresh section / refresh all |
+| `?` | Help |
+| `q` / `F10` | Close |
+
+### Selected PR
+| Key | Action |
+|---|---|
+| `o` | Open in GitHub |
+| `P` | Pick a link from the PR comments with fzf and open it |
+| `F` | Pick a failing check with fzf and open its log |
+| `L` | Edit labels with fzf (Tab toggles, Enter applies) |
+| `S` | Open the PR's Actions runs in gh-enhance (jobs, steps, logs; `h`/`l` panes, `Ctrl+r` reruns failed; `q` or `Ctrl+c` back, built by `gh-dash/build-gh-enhance.sh`) |
+| `C` / `Space` | Check out the branch in a new tmux window |
+| `w` | Watch checks, notify when done |
+| `d` | Full-screen diff in diffnav (patched build from `gh-dash/build-diffnav.sh`): `↑`/`↓` prev/next file, `j`/`k` scroll diff one line, `J`/`K` half page, `h`/`l` collapse/expand folder, `t` find file, `/` search diff, `q` back. Read-only: to comment, use `c` in gh-dash or `o` and comment on GitHub |
+| `c` | Comment |
+| `v` | Approve: asks `y/N`, no comment prompt (`r` refreshes the row) |
+| `V` | Approve all workflow runs |
+| `W` | Mark ready for review |
+| `u` | Update from base branch |
+| `m` | Merge |
+| `x` / `X` | Close / reopen |
+| `a` / `A` | Assign / unassign |
+| `y` / `Y` | Copy PR number / URL |
+
+### Inside fzf pickers (`P`, `F`, `L`)
+| Key | Action |
+|---|---|
+| type | Filter |
+| `↑` / `↓`, `Ctrl+k` / `Ctrl+j` | Move |
+| `Tab` | Toggle selection (labels only) |
+| `Enter` | Confirm |
+| `Esc` | Cancel |
 
 ---
 

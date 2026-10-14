@@ -27,6 +27,7 @@ rm -f ~/.wezterm.lua
 ln -s ~/Documents/dotfiles/nvim ~/.config/nvim
 ln -s ~/Documents/dotfiles/.tmux.conf ~/.tmux.conf
 ln -s ~/Documents/dotfiles/.wezterm.lua ~/.wezterm.lua
+mkdir -p ~/.config/gh-dash && ln -s ~/Documents/dotfiles/gh-dash/config.yml ~/.config/gh-dash/config.yml
 ```
 
 ### 4. Verify symlinks
@@ -44,6 +45,7 @@ ls -la ~/.config/ | grep nvim
   - Gruvbox theme
 - **.tmux.conf** - tmux config with vim-tmux-navigator
 - **.wezterm.lua** - WezTerm terminal config
+- **gh-dash/** - cross-repo PR dashboard config (`prefix p` popup in tmux, needs `gh extension install dlvhdr/gh-dash`)
 
 ## Requirements
 
