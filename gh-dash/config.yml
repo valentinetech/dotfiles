@@ -1,10 +1,11 @@
 prSections:
-  - title: Mine
-    filters: is:open author:@me draft:false
+  - title: Mine, approved
+    filters: is:open author:@me draft:false review:approved
+  # Not draft and not approved yet (covers review required, changes requested, no decision)
+  - title: Mine, ready for review
+    filters: is:open author:@me draft:false -review:approved
   - title: Mine, draft
     filters: is:open author:@me draft:true
-  - title: Mine, needs approval
-    filters: is:open author:@me draft:false review:required
   # user-review-requested = requested from me by name, not via a team I'm in.
   # reviewed-by:dex-review = the bot has already reviewed.
   # review:required = review decision still REVIEW_REQUIRED, i.e. no human approval yet

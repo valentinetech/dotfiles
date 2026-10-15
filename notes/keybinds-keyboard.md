@@ -53,7 +53,7 @@ Arrows drive the table, hjkl drives the preview.
 
 | Key | Action |
 |---|---|
-| `←` / `→` | Previous / next section tab (Mine, Mine draft, Mine needs approval, Review hpanel, Review other, Reviewed by me). Review sections only show PRs where I'm requested by name (not via a team), dex-review has reviewed, and no human has approved yet. Reviewed by me = open PRs where I approved, requested changes or left a review comment (plain conversation comments don't count) |
+| `←` / `→` | Previous / next section tab (Mine approved, Mine ready for review, Mine draft, Review hpanel, Review other, Reviewed by me). Review sections only show PRs where I'm requested by name (not via a team), dex-review has reviewed, and no human has approved yet. Reviewed by me = open PRs where I approved, requested changes or left a review comment (plain conversation comments don't count) |
 | `↑` / `↓` | Previous / next PR row |
 | `g` / `G` | First / last PR |
 | `p` | Hide / show the preview (full-width table while hidden) |
