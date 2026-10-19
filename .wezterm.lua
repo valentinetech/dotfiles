@@ -64,5 +64,8 @@ config.window_padding = {
 }
 config.enable_tab_bar = true
 config.hide_tab_bar_if_only_one_tab = true
+-- kitty graphics protocol: the `img`/`shots` viewer uploads a screenshot once and scrolls it by
+-- re-placing a window of it, instead of re-sending a cropped image per key press
+config.enable_kitty_graphics = true
 
 return config
