@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+# Cleans text copied from a tmux pane before it goes to the clipboard:
+# drops Claude Code's ⏺/⎿ markers, the hanging indent of wrapped lines and
+# trailing whitespace. With --join, wrapped lines are joined back into
+# paragraphs (blank lines, list items and code fences keep their breaks).
+import re
+import subprocess
+import sys
+
+MARKER = re.compile(r"^(\s*)[⏺●⎿](\s)")
+BLOCK_START = re.compile(r"^(\s*([-*+•]|\d+[.)]|#+|>|\||```)\s?)")
+
+lines = [line.rstrip() for line in sys.stdin.read().split("\n")]
+# Swap markers for spaces so they count as indent and dedent away below.
+lines = [MARKER.sub(lambda m: m.group(1) + "  ", line) for line in lines]
+while lines and not lines[-1]:
+    lines.pop()
+
+# The first line often starts mid-text, so take the common indent from the rest.
+indents = [len(l) - len(l.lstrip()) for l in lines[1:] if l]
+indent = min(indents) if indents else 0
+lines = [l[indent:] if l[:indent].isspace() else l.lstrip() for l in lines]
+
+if "--join" in sys.argv:
+    joined = []
+    in_code = False
+    for line in lines:
+        prev = joined[-1] if joined else ""
+        fence = line.lstrip().startswith("```")
+        if fence:
+            in_code = not in_code
+        if not fence and not in_code and line and prev and not BLOCK_START.match(line) and not prev.lstrip().startswith("```"):
+            joined[-1] = prev + " " + line.strip()
+        else:
+            joined.append(line)
+    lines = joined
+
+subprocess.run(["pbcopy"], input="\n".join(lines).encode(), check=True)
