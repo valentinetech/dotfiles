@@ -71,16 +71,19 @@ set -g mouse on
 # Vi mode (only for manual copy mode with Ctrl+b [)
 set-window-option -g mode-keys vi
 bind-key -T copy-mode-vi 'v' send -X begin-selection
-bind-key -T copy-mode-vi 'y' send -X copy-pipe-and-cancel "sed 's/[[:space:]]*$//' | tmux load-buffer -w -"
-bind-key -T copy-mode-vi MouseDragEnd1Pane send -X copy-pipe-and-cancel "sed 's/[[:space:]]*$//' | tmux load-buffer -w -"
-bind-key -T copy-mode MouseDragEnd1Pane send -X copy-pipe-and-cancel "sed 's/[[:space:]]*$//' | tmux load-buffer -w -"
+# y / mouse drag: strip Claude markers + wrap indent and join wrapped lines into paragraphs; Y: keep line breaks
+# The script is found next to wherever ~/.tmux.conf is symlinked from.
+bind-key -T copy-mode-vi 'y' send -X copy-pipe-and-cancel '"$(dirname "$(readlink -f ~/.tmux.conf)")"/tmux/clean-copy --join | tmux load-buffer -w -'
+bind-key -T copy-mode-vi 'Y' send -X copy-pipe-and-cancel '"$(dirname "$(readlink -f ~/.tmux.conf)")"/tmux/clean-copy | tmux load-buffer -w -'
+bind-key -T copy-mode-vi MouseDragEnd1Pane send -X copy-pipe-and-cancel '"$(dirname "$(readlink -f ~/.tmux.conf)")"/tmux/clean-copy --join | tmux load-buffer -w -'
+bind-key -T copy-mode MouseDragEnd1Pane send -X copy-pipe-and-cancel '"$(dirname "$(readlink -f ~/.tmux.conf)")"/tmux/clean-copy --join | tmux load-buffer -w -'
 bind-key -T copy-mode-vi Escape send -X cancel
 
 # Escape time
 set -sg escape-time 0
 
 # Page Up/Down scrolling line by line
-bind -n PageUp copy-mode \; send-keys -X scroll-up
+bind -n PageUp if-shell -F "#{alternate_on}" "send-keys PageUp" "copy-mode -e ; send-keys -X scroll-up"
 bind -T copy-mode-vi PageUp send-keys -X scroll-up
 bind -T copy-mode-vi PageDown send-keys -X scroll-down
 

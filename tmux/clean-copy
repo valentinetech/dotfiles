@@ -4,6 +4,7 @@
 # trailing whitespace. With --join, wrapped lines are joined back into
 # paragraphs (blank lines, list items and code fences keep their breaks).
 import re
+import shutil
 import subprocess
 import sys
 
@@ -35,4 +36,9 @@ if "--join" in sys.argv:
             joined.append(line)
     lines = joined
 
-subprocess.run(["pbcopy"], input="\n".join(lines).encode(), check=True)
+text = "\n".join(lines)
+# No pbcopy (container): print it, the tmux binding pipes it into `load-buffer -w`.
+if shutil.which("pbcopy"):
+    subprocess.run(["pbcopy"], input=text.encode(), check=True)
+else:
+    sys.stdout.write(text)
