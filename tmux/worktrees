@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# worktrees [repo] — pick a git worktree and open lazygit in it; back to the list when you quit lazygit.
+# Each row: ticket, tracker status, dev server port, uncommitted files, commits ahead of master, title.
+#   enter   lazygit in that worktree (q returns here)
+#   ctrl-w  new tmux window in it, named after the ticket
+#   ctrl-y  copy its path
+#   esc     close
+# repo: any path inside the repo (default: current directory, else ~/Documents/GitHub/hpanel).
+set -u
+self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
+tasks=~/Documents/GitHub/msw-kit/data/tasks.json
+
+list() {
+  local repo=$1 base ports
+  base=$(git -C "$repo" rev-parse --verify -q origin/master >/dev/null && echo origin/master || echo origin/main)
+  ports=$(curl -s --max-time 0.5 localhost:3333/__branch/list 2>/dev/null | jq -r '.branches[]? | "\(.root)\t\(.port)"' 2>/dev/null)
+  git -C "$repo" worktree list --porcelain | while read -r k v; do
+    case $k in
+      worktree) path=$v; branch='(detached)';;
+      branch) branch=${v#refs/heads/};;
+      '')
+        [ -d "$path" ] || continue
+        key=$(printf %s "$branch" | grep -oE '^[A-Z][A-Z0-9]+-[0-9]+' || true)
+        title='' status=''
+        if [ -n "$key" ] && [ -f "$tasks" ]; then
+          IFS=$'\t' read -r status title < <(jq -r --arg k "$key" '.[$k] // {} | [(.status // ""), (.title // "")] | @tsv' "$tasks")
+        fi
+        dirty=$(git -C "$path" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+        ahead=$(git -C "$path" rev-list --count "$base..HEAD" 2>/dev/null || echo 0)
+        port=$(printf '%s\n' "$ports" | awk -F'\t' -v p="$path" '$1 == p {print ":" $2}')
+        name=${branch#"$key"/}
+        printf '%s\t\033[1m%-11s\033[0m \033[35m%-12s\033[0m \033[32m%-6s\033[0m \033[33m%-4s\033[0m \033[36m%-5s\033[0m %s \033[2m%s\033[0m\n' \
+          "$path" "${key:-${branch:0:11}}" "${status//_/ }" "$port" \
+          "$([ "$dirty" -gt 0 ] && echo "✎$dirty")" "$([ "$ahead" -gt 0 ] && echo "↑$ahead")" "$name" "${title:+— $title}"
+        ;;
+    esac
+  done
+}
+
+if [ "${1:-}" = --list ]; then list "$2"; exit; fi
+
+repo=$(git -C "${1:-$PWD}" rev-parse --show-toplevel 2>/dev/null || echo ~/Documents/GitHub/hpanel)
+list "$repo" | fzf --ansi --delimiter='\t' --with-nth=2 --no-sort --layout=reverse --cycle \
+  --prompt='worktree> ' \
+  --header='enter lazygit · ctrl-w tmux window · ctrl-y copy path · esc close' \
+  --preview='git -C {1} -c color.status=always status -sb; echo; git -C {1} log --oneline --color -10' \
+  --preview-window='down,45%,border-top' \
+  --bind="enter:execute(lazygit -p {1})+reload($self --list '$repo')" \
+  --bind="ctrl-w:execute-silent(tmux new-window -c {1} -n \"\$(basename {1})\")+abort" \
+  --bind='ctrl-y:execute-silent(printf %s {1} | pbcopy)'
