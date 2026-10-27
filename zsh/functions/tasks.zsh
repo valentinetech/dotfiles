@@ -1,0 +1,313 @@
+# ---- tasks: the msw-kit task tracker shared by all Claude sessions/agents ----
+# tasks            open tasks, newest update first
+# tasks h          finished tasks (newest done first)
+# tasks <KEY>      full JSON of one task (open or finished)
+# tasks watch|w    live view for a side pane (r: review requests view, t: back to tasks):
+#                  open tasks at the top, newest first, as many as fit
+#                  ("+N more" only for the overflow), recently finished and the change feed flush
+#                  with the bottom edge;
+#                  redraws when agents update the tracker (Ctrl-C to quit)
+# Written only through the msw-kit MCP (tasks_update); this just reads the files.
+
+_TASKS_DIR=~/Documents/GitHub/msw-kit/data
+
+tasks() {
+  local open=$_TASKS_DIR/tasks.json hist=$_TASKS_DIR/history.json
+  local cols=${COLUMNS:-120}
+  if [[ "$1" == watch || "$1" == w ]]; then _tasks_watch "$open" "$hist"; return; fi
+  # shared jq helpers: colours, "2h ago", truncate to width
+  local lib='
+    def c($n): "\u001b[" + $n + "m";
+    def dim: c("2");  def bold: c("1");  def reset: c("0");
+    def colour($s): if $s == "in_progress" or $s == "implementing" then c("33")
+                    elif $s == "testing" or $s == "linting" then c("36")
+                    elif $s == "verifying" or $s == "e2e" then c("34")
+                    elif $s == "blocked" then c("31") elif $s == "human_review" then c("1;36") elif $s == "review" then c("35")
+                    elif $s == "done" then c("32") else c("90") end;
+    def stname($s): $s | gsub("_"; " ");
+    def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+    def ago: (now - epoch) | floor
+      | if . < 60 then "just now" elif . < 3600 then "\(./60|floor)m ago"
+        elif . < 86400 then "\(./3600|floor)h ago" else "\(./86400|floor)d ago" end;
+    def cut($n): if length > $n then .[0:$n-1] + "…" else . end;
+    def prnum: if . == null then null else capture("/pull/(?<n>[0-9]+)$").n // . end;
+  '
+  case "$1" in
+    h)
+      [ -f "$hist" ] || { echo "no history yet"; return }
+      jq -r --argjson w "$cols" "$lib"'
+        to_entries | map(.value) | sort_by(.doneAt) | reverse | .[]
+        | colour("done") + "●" + reset + " " + bold + .key + reset + "  " + ((.title // "") | cut($w - 30))
+          + "\n  " + dim + "done " + (.doneAt | ago)
+          + (if .pr then " · PR #" + (.pr | prnum) else "" end)
+          + (if .branch then " · " + .branch else "" end) + reset + "\n"' "$hist"
+      ;;
+    "")
+      [ -f "$open" ] || { echo "no open tasks"; return }
+      # _TASKS_LIMIT=n (set by the watcher) shows only the n most recently updated, plus a "+n more" line
+      jq -r --argjson w "$cols" --argjson lim "${_TASKS_LIMIT:-0}" "$lib"'
+        . as $open
+        # priority: what needs you first, then work in flight, then waiting on others, then not started;
+        # newest update first inside each group
+        | def rank: if .status == "blocked" then 0
+                    elif .status == "human_review" then 1
+                    elif (.status | IN("implementing", "testing", "linting", "verifying", "e2e", "in_progress")) then 2
+                    elif .status == "review" then 3
+                    elif .status == "todo" then 4 else 5 end;
+        # sections in this order: in progress (incl. todo), in review, blocked, ad hoc (no ticket key)
+        def section: if (.key | startswith("adhoc-")) then 3
+                       elif .status == "blocked" then 2
+                       elif (.status | IN("review", "human_review")) then 1 else 0 end;
+        def sname: ["In progress", "In review", "Blocked", "Ad hoc"][.];
+        to_entries | map(.value) | if length == 0 then "no open tasks" else
+        sort_by([section, rank, -(.updated | epoch)])
+        | (map(section) | group_by(.) | map({key: (.[0] | tostring), value: length}) | from_entries) as $count
+        # with a limit: the $lim newest, plus anything updated in the last 3 hours (a running session)
+        | (if $lim > 0 then [ to_entries[] | select(.key < $lim or (now - (.value.updated | epoch)) < 10800) | .value ] else . end) as $shown
+        | (if $lim > 0 and length > ($shown | length) then dim + "  +\(length - ($shown | length)) more · tasks" + reset + "\n" else "" end) as $more
+        | $shown
+        | (. as $a | range(0; length) as $i | $a[$i]
+        # section header glued to its first task (no blank line), so the watcher keeps it with that task
+        | (if $i == 0 or ($a[$i - 1] | section) != section then
+             (if section == 2 then c("31") else dim end) + "── " + (section | sname)
+             + " (" + ($count[section | tostring] | tostring) + ") ──" + reset + "\n"
+           else "" end)
+          + colour(.status) + "●" + reset + " " + bold + .key + reset + "  " + ((.title // "") | cut($w - 16))
+          + "\n  " + colour(.status) + stname(.status) + reset + dim
+          + (if .branch then " · " + .branch else "" end)
+          + (if .pr then " · PR #" + (.pr | prnum) else "" end)
+          + (if .agent then " · " + .agent else "" end)
+          + " · " + (.updated | ago) + reset
+          # CI line from watch-pr: red when something fails, yellow while running/fixing, green when green
+          + (if .ci then "\n  " + (if (.ci | test("fail|red|conflict|reject"; "i")) then c("31")
+                                   elif (.ci | test("green|approved|ready|pass"; "i")) then c("32")
+                                   else c("33") end) + "⟳ " + (.ci | cut($w - 6)) + reset else "" end)
+          # merge-after links: dim while work/review goes on, yellow once this one is approved and only waiting
+          + (if (.blockedBy // []) | length > 0 then
+              ((.ci // "") | test("approved|ready to merge"; "i")) as $ready
+              | "\n  " + (if $ready then c("33") else dim end) + "⏸ merge after "
+                + ([.blockedBy[] | . as $b | $b + " (" + (($open[$b].status // "not tracked") | stname(.)) + ")"] | join(", "))
+                + (if $ready then " · approved, waiting" else "" end) + reset
+            else "" end)
+          + (if (.notes | length) > 0 then "\n  " + dim + "↳ " + reset + (.notes[-1].text | cut($w - 4)) else "" end)
+          + "\n"), $more end' "$open"
+      ;;
+    *)
+      local key=${1:u}
+      jq --arg k "$key" '.[$k] // empty' "$open" "$hist" 2>/dev/null | grep -q . \
+        && jq --arg k "$key" '.[$k] // empty' "$open" "$hist" 2>/dev/null \
+        || echo "no task $key"
+      ;;
+  esac
+}
+
+# ---- reviews view (r in the watcher): PRs waiting on your review, joined with the review ledger ----
+_TASKS_REVIEWS_CACHE=~/.cache/tasks-reviews.json
+_TASKS_REVIEWS_LEDGER=~/.local/state/claude/review-requested-prs/reviews.jsonl
+# one <number>.json per PR whose review subagent is running (written/removed by review-requested-prs)
+_TASKS_REVIEWS_INFLIGHT=~/.local/state/claude/review-requested-prs/reviewing
+
+# refresh the requested-PR list in the background when it is older than 2 min (never blocks the view)
+_tasks_reviews_fetch() {
+  local c=$_TASKS_REVIEWS_CACHE
+  zmodload -F zsh/stat b:zstat 2>/dev/null; zmodload zsh/datetime 2>/dev/null
+  local age=$(( EPOCHSECONDS - $(zstat +mtime "$c" 2>/dev/null || echo 0) ))
+  (( age < 120 )) && return
+  [[ -e $c.lock ]] && (( EPOCHSECONDS - $(zstat +mtime "$c.lock" 2>/dev/null || echo 0) < 60 )) && return
+  mkdir -p ${c:h}; : > $c.lock
+  ( gh pr list --repo hostinger/hpanel --limit 100 \
+      --search 'is:open -is:draft user-review-requested:@me -author:@me -author:app/dependabot' \
+      --json number,title,author,headRefOid,updatedAt,url > $c.tmp 2>/dev/null && mv $c.tmp $c
+    rm -f $c.lock ) &!
+}
+
+# the reviews list: reviewing now, waiting on you (not reviewed / rated but not posted / new commits since),
+# then approved in the last 24 h
+_tasks_reviews() {
+  local cols=${COLUMNS:-120}
+  _tasks_reviews_fetch
+  [[ -f $_TASKS_REVIEWS_CACHE ]] || { print "  fetching review requests…"; return }
+  jq -r -n --argjson w "$cols" --slurpfile req $_TASKS_REVIEWS_CACHE \
+    --slurpfile led <( [[ -f $_TASKS_REVIEWS_LEDGER ]] && cat $_TASKS_REVIEWS_LEDGER || true ) \
+    --slurpfile ing <( cat $_TASKS_REVIEWS_INFLIGHT/*.json(N) 2>/dev/null || true ) '
+    def c($n): "\u001b[" + $n + "m"; def dim: c("2"); def bold: c("1"); def reset: c("0");
+    def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+    def ago: (now - epoch) | floor
+      | if . < 3600 then "\(./60|floor)m ago" elif . < 86400 then "\(./3600|floor)h ago" else "\(./86400|floor)d ago" end;
+    def cut($n): if length > $n then .[0:$n-1] + "…" else . end;
+    ($led | map(select(.repo == "hostinger/hpanel"))) as $l
+    # in flight: markers younger than 2 h (an older one is a crashed session)
+    | ($ing | map(select((now - (.startedAt | epoch)) < 7200)) | sort_by(.startedAt)) as $doing
+    | ($doing | map(.number)) as $doingN
+    # latest review entry and latest posted entry per PR
+    | ($l | map(select(.rating)) | group_by(.number) | map({key: (.[0].number | tostring), value: .[-1]}) | from_entries) as $rev
+    | ($l | map(select(.posted == true)) | group_by(.number) | map({key: (.[0].number | tostring), value: .[-1]}) | from_entries) as $post
+    | ($req[0] // [] | map(select(.number | IN($doingN[]) | not))) as $r
+    | ($r | map(. as $p | ($rev[$p.number | tostring]) as $e | ($post[$p.number | tostring]) as $x
+        | $p + {state:
+            (if $e == null then "new"
+             elif $e.headSha != $p.headRefOid then "moved"
+             elif $x != null and $x.headSha == $p.headRefOid then "posted"
+             else "rated" end), rating: ($e.rating // null)})) as $rows
+    | def line($col; $tag): $col + "●" + reset + " " + bold + "#\(.number)" + reset + "  " + (.title | cut($w - 12))
+        + "\n  " + $col + $tag + reset + dim + " · " + .author.login + " · " + (.updatedAt | ago) + reset;
+    (if ($doing | length) > 0 then
+       (dim + "── Reviewing (\($doing | length)) ──" + reset),
+       ($doing[] | c("34") + "◐" + reset + " " + bold + "#\(.number)" + reset + "  " + ((.title // "") | cut($w - 12))
+         + "\n  " + c("34") + "reviewing" + reset + dim + " · " + (.author // "") + " · @ " + ((.headSha // "")[0:7])
+         + " · started " + (.startedAt | ago) + reset),
+       ""
+     else empty end),
+    (dim + "── Waiting on you (\($rows | map(select(.state != "posted")) | length)) ──" + reset),
+    ($rows | map(select(.state == "new")) | .[] | line(c("33"); "not reviewed")),
+    ($rows | map(select(.state == "moved")) | .[] | line(c("35"); "new commits since your review (\(.rating))")),
+    ($rows | map(select(.state == "rated")) | .[] | line(c("36"); "\(.rating) · not posted")),
+    "",
+    # approved in the last day: from the ledger, review-requested search drops them once reviewed
+    ([$post[] | select((now - (.reviewedAt | epoch)) < 86400)] | sort_by(.reviewedAt) | reverse) as $done
+    | (dim + "── Approved by you, last 24h (\($done | length)) ──" + reset),
+      ($done[] | c("32") + "✔" + reset + " " + bold + "#\(.number)" + reset + dim
+        + (if .title then reset + "  " + (.title | cut($w - 60)) + dim else "" end)
+        + "  " + (.reviewedAt | ago) + (if (.nitsPosted // 0) > 0 then " · \(.nitsPosted) nit(s)" else "" end)
+        + " · " + (.reviewUrl // "") + reset)
+  '
+}
+
+# live view: polls the two files once a second (no fswatch needed), redraws on change
+# or every 60 s so the "2m ago" labels stay honest; keeps a short feed of what changed.
+_tasks_watch() {
+  local open=$1 hist=$2 cols=${COLUMNS:-120}
+  zmodload -F zsh/stat b:zstat 2>/dev/null
+  local sig='' last='' tick=0 prev='{}' snap changes line mode=tasks key
+  local -a feed
+  local dim=$'\e[2m' bold=$'\e[1m' reset=$'\e[0m' green=$'\e[32m' yellow=$'\e[33m'
+  tput civis 2>/dev/null
+  trap 'tput cnorm 2>/dev/null; trap - INT; return 0' INT
+  while true; do
+    if [[ $mode == reviews ]]; then
+      sig="reviews/$(zstat +mtime $_TASKS_REVIEWS_CACHE 2>/dev/null)/$(zstat +mtime $_TASKS_REVIEWS_LEDGER 2>/dev/null)/$(zstat +mtime $_TASKS_REVIEWS_INFLIGHT 2>/dev/null)/${COLUMNS}/${LINES}"
+      if [[ "$sig" != "$last" || $tick -ge 60 ]]; then
+        last=$sig; tick=0
+        printf '\e[H\e[2J'
+        print -l -- "${bold}review requests${reset} ${dim}· live · $(date +%H:%M:%S) · t tasks · Ctrl-C to quit${reset}" ""
+        _tasks_reviews
+      fi
+      # the list itself refreshes every 2 min in the background
+      (( tick % 30 == 0 )) && _tasks_reviews_fetch
+    else
+    sig="$(zstat +mtime "$open" 2>/dev/null)/$(zstat +mtime "$hist" 2>/dev/null)/${COLUMNS}"
+    if [[ "$sig" != "$last" || $tick -ge 60 ]]; then
+      # key -> updated for open tasks, plus "done" markers for everything in history
+      snap=$(jq -c -s '(.[0] // {} | map_values(.updated)) + (.[1] // {} | map_values("done"))' "$open" "$hist" 2>/dev/null) || snap='{}'
+      if [[ "$sig" != "$last" && "$last" != "" ]]; then
+        changes=$(jq -r -n --argjson p "$prev" --argjson n "$snap" --slurpfile o "$open" --slurpfile h "$hist" '
+          ($o[0] // {}) as $open | ($h[0] // {}) as $hist
+          | [ $n | to_entries[] | select($p[.key] != .value) ]
+          | map(
+              if .value == "done" then "\u001b[32m✔ \(.key)\u001b[0m done"
+              else ($open[.key]) as $t
+                | "\u001b[33m● \(.key)\u001b[0m \($t.status // "")"
+                  + (if ($t.agent // "") != "" then " · \($t.agent)" else "" end)
+                  + (if ($t.notes | length) > 0 then " · \($t.notes[-1].text)" else "" end)
+              end)
+          | .[]' 2>/dev/null)
+        for line in ${(f)changes}; do
+          feed=("${(@)feed}" "${dim}$(date +%H:%M:%S)${reset}  ${line}")
+        done
+        (( ${#feed} > 3 )) && feed=("${(@)feed[-3,-1]}")
+      fi
+      prev=$snap; last=$sig; tick=0
+      # layout: open tasks at the top, the feed anchored to the bottom half, finished list right above it
+      local rows=${LINES:-40}
+      local -a fin top
+      fin=()
+      # last 2 finished, so a ticket that just left the open list is still visible
+      if [[ -f "$hist" ]] && jq -e 'length > 0' "$hist" >/dev/null 2>&1; then
+        fin=( ${(f)"$(jq -r --argjson w "$cols" '
+          def c($n): "\u001b[" + $n + "m";
+          def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+          def ago: (now - epoch) | floor
+            | if . < 60 then "just now" elif . < 3600 then "\(./60|floor)m ago"
+              elif . < 86400 then "\(./3600|floor)h ago" else "\(./86400|floor)d ago" end;
+          def cut($n): if length > $n then .[0:$n-1] + "…" else . end;
+          def prnum: if . == null then null else capture("/pull/(?<n>[0-9]+)$").n // . end;
+          to_entries | map(.value) | sort_by(.doneAt) | reverse | .[0:2][]
+          | c("32") + "✔" + c("0") + " " + c("1") + .key + c("0") + "  " + ((.title // "") | cut($w - 40))
+            + c("2") + "  " + (.doneAt | ago)
+            + (if .pr then " · PR #" + (.pr | prnum) else "" end) + c("0")' "$hist")"} )
+      fi
+      # tasks take the top and get priority; finished + feed sit flush against the bottom edge,
+      # using at most ~40% of the height and never overlapping the tasks above
+      top=( "${bold}msw-kit tasks${reset} ${dim}· live · $(date +%H:%M:%S) · r reviews · Ctrl-C to quit${reset}" "" )
+      # every open task, newest first, as many as fit; only the overflow becomes "+N more".
+      # Room is kept for the recently-finished block (header + its lines + a gap) at the bottom.
+      local reserve=$(( ${#fin} ? ${#fin} + 2 : 0 )) avail line nblocks=0 shown=0
+      avail=$(( rows - $(_tasks_rows "${(@)top}") - reserve - 2 ))
+      local -a all block blocks
+      # `local` inside the redraw loop does not empty an array that already exists: reset explicitly
+      all=() block=() blocks=()
+      all=( "${(@f)$(tasks)}" )
+      for line in "${(@)all}" ""; do
+        if [[ -z $line ]]; then
+          (( ${#block} )) && { blocks+=( "${(pj:\n:)block}" ); block=() }
+        else
+          block+=( "$line" )
+        fi
+      done
+      nblocks=${#blocks}
+      for b in "${(@)blocks}"; do
+        local -a bl; bl=( "${(@f)b}" "" )
+        (( $(_tasks_rows "${(@)top}" "${(@)bl}") - 3 > avail + 0 && shown > 0 )) && break
+        (( $(_tasks_rows "${(@)top}" "${(@)bl}") > rows - reserve - 2 && shown > 0 )) && break
+        top+=( "${(@)bl}" ); (( shown++ ))
+      done
+      (( shown < nblocks )) && top+=( "${dim}  +$(( nblocks - shown )) more · tasks${reset}" )
+      local top_rows=$(_tasks_rows "${(@)top}") budget
+      budget=$(( rows - top_rows - 1 ))
+      (( budget > rows * 2 / 5 )) && budget=$(( rows * 2 / 5 ))
+      local -a bottom
+      _tasks_bottom() {
+        bottom=()
+        (( ${#fin} )) && bottom+=( "${dim}── recently finished ──${reset}" "${(@)fin}" )
+        if (( ${#feed} )); then
+          (( ${#bottom} )) && bottom+=( "" )
+          bottom+=( "${dim}── recent changes ──${reset}" "${(@)feed}" )
+        fi
+      }
+      _tasks_bottom
+      # shrink: oldest feed entries first, then the whole feed, then the finished list
+      while (( ${#bottom} && $(_tasks_rows "${(@)bottom}") > budget )); do
+        if (( ${#feed} > 1 )); then feed=("${(@)feed[2,-1]}")
+        elif (( ${#feed} )); then feed=()
+        else fin=(); fi
+        _tasks_bottom
+      done
+      printf '\e[H\e[2J'
+      print -l -- "${(@)top}"
+      if (( ${#bottom} )); then
+        printf '\e[%d;1H' $(( rows - $(_tasks_rows "${(@)bottom}") + 1 ))
+        print -n -l -- "${(@)bottom}"
+      fi
+    fi
+    fi
+    # wait a second, or less if a key comes in: r = reviews view, t = tasks view
+    if read -s -t 1 -k 1 key 2>/dev/null; then
+      case $key in
+        r) [[ $mode != reviews ]] && { mode=reviews; last=''; _tasks_reviews_fetch } ;;
+        t) [[ $mode != tasks ]] && { mode=tasks; last='' } ;;
+      esac
+    fi
+    (( tick++ ))
+  done
+}
+
+# visual rows a list of (possibly coloured, possibly wrapping) lines takes at the current width
+_tasks_rows() {
+  setopt localoptions extendedglob
+  local l s n=0 w=${COLUMNS:-120}
+  for l in "$@"; do
+    s=${l//$'\e'\[[0-9;]#m/}
+    (( n += ${#s} ? (${#s} + w - 1) / w : 1 ))
+  done
+  print $n
+}

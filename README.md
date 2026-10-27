@@ -28,6 +28,7 @@ ln -s ~/Documents/dotfiles/nvim ~/.config/nvim
 ln -s ~/Documents/dotfiles/.tmux.conf ~/.tmux.conf
 ln -s ~/Documents/dotfiles/.wezterm.lua ~/.wezterm.lua
 mkdir -p ~/.config/gh-dash && ln -s ~/Documents/dotfiles/gh-dash/config.yml ~/.config/gh-dash/config.yml
+mkdir -p ~/.zsh/functions && ln -s ~/Documents/dotfiles/zsh/functions/tasks.zsh ~/.zsh/functions/tasks.zsh
 ```
 
 ### 4. Verify symlinks
