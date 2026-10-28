@@ -10,6 +10,8 @@
 # Written only through the msw-kit MCP (tasks_update); this just reads the files.
 
 _TASKS_DIR=~/Documents/GitHub/msw-kit/data
+# this file, symlinks resolved: the watcher re-sources it when it changes, so an open pane picks up edits
+_TASKS_SRC=${${(%):-%x}:A}
 
 tasks() {
   local open=$_TASKS_DIR/tasks.json hist=$_TASKS_DIR/history.json
@@ -24,6 +26,9 @@ tasks() {
                     elif $s == "verifying" or $s == "e2e" then c("34")
                     elif $s == "blocked" then c("31") elif $s == "human_review" then c("1;36") elif $s == "review" then c("35")
                     elif $s == "done" then c("32") else c("90") end;
+    # one glyph per status (all single-width, so the columns stay aligned)
+    def icon($s): {todo: "○", in_progress: "◐", implementing: "✎", testing: "◇", linting: "≡",
+                   verifying: "◉", e2e: "▷", blocked: "✖", review: "◎", human_review: "★", done: "✔"}[$s] // "●";
     def stname($s): $s | gsub("_"; " ");
     def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
     def ago: (now - epoch) | floor
@@ -37,7 +42,7 @@ tasks() {
       [ -f "$hist" ] || { echo "no history yet"; return }
       jq -r --argjson w "$cols" "$lib"'
         to_entries | map(.value) | sort_by(.doneAt) | reverse | .[]
-        | colour("done") + "●" + reset + " " + bold + .key + reset + "  " + ((.title // "") | cut($w - 30))
+        | colour("done") + icon("done") + reset + " " + bold + .key + reset + "  " + ((.title // "") | cut($w - 30))
           + "\n  " + dim + "done " + (.doneAt | ago)
           + (if .pr then " · PR #" + (.pr | prnum) else "" end)
           + (if .branch then " · " + .branch else "" end) + reset + "\n"' "$hist"
@@ -72,7 +77,7 @@ tasks() {
              (if section == 2 then c("31") else dim end) + "── " + (section | sname)
              + " (" + ($count[section | tostring] | tostring) + ") ──" + reset + "\n"
            else "" end)
-          + colour(.status) + "●" + reset + " " + bold + .key + reset + "  " + ((.title // "") | cut($w - 16))
+          + colour(.status) + icon(.status) + reset + " " + bold + .key + reset + "  " + ((.title // "") | cut($w - 16))
           + "\n  " + colour(.status) + stname(.status) + reset + dim
           + (if .branch then " · " + .branch else "" end)
           + (if .pr then " · PR #" + (.pr | prnum) else "" end)
@@ -103,6 +108,7 @@ tasks() {
 
 # ---- reviews view (r in the watcher): PRs waiting on your review, joined with the review ledger ----
 _TASKS_REVIEWS_CACHE=~/.cache/tasks-reviews.json
+_TASKS_REVIEWS_STATES=~/.cache/tasks-reviews-states.json
 _TASKS_REVIEWS_LEDGER=~/.local/state/claude/review-requested-prs/reviews.jsonl
 # one <number>.json per PR whose review subagent is running (written/removed by review-requested-prs)
 _TASKS_REVIEWS_INFLIGHT=~/.local/state/claude/review-requested-prs/reviewing
@@ -118,18 +124,27 @@ _tasks_reviews_fetch() {
   ( gh pr list --repo hostinger/hpanel --limit 100 \
       --search 'is:open -is:draft user-review-requested:@me -author:@me -author:app/dependabot' \
       --json number,title,author,headRefOid,updatedAt,url > $c.tmp 2>/dev/null && mv $c.tmp $c
+    # title and open/merged/closed for every PR in the ledger (the week's history), one GraphQL call
+    local q
+    q=$(jq -rs '[.[] | select(.repo == "hostinger/hpanel") | .number] | unique
+      | map("p\(.): pullRequest(number: \(.)) { number state title }") | join(" ")' \
+      $_TASKS_REVIEWS_LEDGER 2>/dev/null)
+    [[ -n $q ]] && gh api graphql -f query="{ repository(owner: \"hostinger\", name: \"hpanel\") { $q } }" \
+      --jq '[.data.repository[] | select(.)]' > $_TASKS_REVIEWS_STATES.tmp 2>/dev/null \
+      && mv $_TASKS_REVIEWS_STATES.tmp $_TASKS_REVIEWS_STATES
     rm -f $c.lock ) &!
 }
 
 # the reviews list: reviewing now, waiting on you (not reviewed / rated but not posted / new commits since),
-# then approved in the last 24 h
+# then everything you reviewed in the last 7 days (the ledger keeps a week)
 _tasks_reviews() {
   local cols=${COLUMNS:-120}
   _tasks_reviews_fetch
   [[ -f $_TASKS_REVIEWS_CACHE ]] || { print "  fetching review requests…"; return }
   jq -r -n --argjson w "$cols" --slurpfile req $_TASKS_REVIEWS_CACHE \
     --slurpfile led <( [[ -f $_TASKS_REVIEWS_LEDGER ]] && cat $_TASKS_REVIEWS_LEDGER || true ) \
-    --slurpfile ing <( cat $_TASKS_REVIEWS_INFLIGHT/*.json(N) 2>/dev/null || true ) '
+    --slurpfile ing <( cat /dev/null $_TASKS_REVIEWS_INFLIGHT/*.json(N) 2>/dev/null || true ) \
+    --slurpfile st <( [[ -f $_TASKS_REVIEWS_STATES ]] && cat $_TASKS_REVIEWS_STATES || true ) '
     def c($n): "\u001b[" + $n + "m"; def dim: c("2"); def bold: c("1"); def reset: c("0");
     def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
     def ago: (now - epoch) | floor
@@ -163,13 +178,28 @@ _tasks_reviews() {
     ($rows | map(select(.state == "moved")) | .[] | line(c("35"); "new commits since your review (\(.rating))")),
     ($rows | map(select(.state == "rated")) | .[] | line(c("36"); "\(.rating) · not posted")),
     "",
-    # approved in the last day: from the ledger, review-requested search drops them once reviewed
-    ([$post[] | select((now - (.reviewedAt | epoch)) < 86400)] | sort_by(.reviewedAt) | reverse) as $done
-    | (dim + "── Approved by you, last 24h (\($done | length)) ──" + reset),
-      ($done[] | c("32") + "✔" + reset + " " + bold + "#\(.number)" + reset + dim
-        + (if .title then reset + "  " + (.title | cut($w - 60)) + dim else "" end)
-        + "  " + (.reviewedAt | ago) + (if (.nitsPosted // 0) > 0 then " · \(.nitsPosted) nit(s)" else "" end)
-        + " · " + (.reviewUrl // "") + reset)
+    # the week: latest entry per PR from the ledger (review-requested search drops PRs once reviewed),
+    # merged/closed from the background state fetch
+    (($st[0] // []) | map({key: (.number | tostring), value: .}) | from_entries) as $pr
+    # posted entries carry no rating: take the latest rated entry, then look for a posted one at its head
+    | ([$l[] | select(.reviewedAt and (now - (.reviewedAt | epoch)) < 604800)]
+       | group_by(.number)
+       | map(([.[] | select(.rating)] | last) as $r | select($r)
+           | ([.[] | select(.posted == true and .headSha == $r.headSha)] | last) as $p
+           | $r + {posted: ($p != null), at: ($p.reviewedAt // $r.reviewedAt),
+               nitCount: (if $p then $p.nitsPosted // 0 else ($r.nits // []) | length end)})
+       | sort_by(.at) | reverse) as $week
+    | (dim + "── Reviewed this week (\($week | length)) ──" + reset),
+      ($week[] | ($pr[.number | tostring].state // "") as $s
+        | (if .rating == "REQUEST CHANGES" then c("31") elif .rating == "APPROVE WITH NITS" then c("36") else c("32") end) as $col
+        | (if .posted then $col + "✔" else dim + "○" end) + reset + " " + bold + "#\(.number)" + reset
+          + "  " + ((.title // $pr[.number | tostring].title // "") | cut($w - 12))
+          + "\n  " + $col + .rating + reset + dim
+          + (if .posted then " · posted" else " · not posted" end)
+          + (if .nitCount > 0 then " · \(.nitCount) nit(s)" else "" end)
+          + (if $s == "MERGED" then " · " + reset + c("35") + "merged" + reset + dim
+             elif $s == "CLOSED" then " · closed" else "" end)
+          + " · " + (.at | ago) + reset)
   '
 }
 
@@ -179,6 +209,7 @@ _tasks_watch() {
   local open=$1 hist=$2 cols=${COLUMNS:-120}
   zmodload -F zsh/stat b:zstat 2>/dev/null
   local sig='' last='' tick=0 prev='{}' snap changes line mode=tasks key
+  local srcm=$(zstat +mtime $_TASKS_SRC 2>/dev/null)
   local -a feed
   local dim=$'\e[2m' bold=$'\e[1m' reset=$'\e[0m' green=$'\e[32m' yellow=$'\e[33m'
   tput civis 2>/dev/null
@@ -206,7 +237,9 @@ _tasks_watch() {
           | map(
               if .value == "done" then "\u001b[32m✔ \(.key)\u001b[0m done"
               else ($open[.key]) as $t
-                | "\u001b[33m● \(.key)\u001b[0m \($t.status // "")"
+                | "\u001b[33m" + ({todo: "○", in_progress: "◐", implementing: "✎", testing: "◇", linting: "≡",
+                    verifying: "◉", e2e: "▷", blocked: "✖", review: "◎", human_review: "★"}[$t.status // ""] // "●")
+                  + " \(.key)\u001b[0m \($t.status // "")"
                   + (if ($t.agent // "") != "" then " · \($t.agent)" else "" end)
                   + (if ($t.notes | length) > 0 then " · \($t.notes[-1].text)" else "" end)
               end)
@@ -289,6 +322,10 @@ _tasks_watch() {
         print -n -l -- "${(@)bottom}"
       fi
     fi
+    fi
+    # tasks.zsh edited: reload the functions and redraw (this loop keeps running, the next calls use the new code)
+    if [[ $(zstat +mtime $_TASKS_SRC 2>/dev/null) != $srcm ]]; then
+      srcm=$(zstat +mtime $_TASKS_SRC 2>/dev/null); source $_TASKS_SRC; last=''
     fi
     # wait a second, or less if a key comes in: r = reviews view, t = tasks view
     if read -s -t 1 -k 1 key 2>/dev/null; then
