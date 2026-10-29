@@ -189,8 +189,9 @@ _tasks_reviews() {
            | $r + {posted: ($p != null), at: ($p.reviewedAt // $r.reviewedAt),
                nitCount: (if $p then $p.nitsPosted // 0 else ($r.nits // []) | length end)})
        | sort_by(.at) | reverse) as $week
-    | (dim + "── Reviewed this week (\($week | length)) ──" + reset),
-      ($week[] | ($pr[.number | tostring].state // "") as $s
+    # only the 10 newest, so the list never fills the pane
+    | (dim + "── Reviewed this week (\(if ($week | length) > 10 then "last 10 of \($week | length)" else $week | length end)) ──" + reset),
+      ($week[0:10][] | ($pr[.number | tostring].state // "") as $s
         | (if .rating == "REQUEST CHANGES" then c("31") elif .rating == "APPROVE WITH NITS" then c("36") else c("32") end) as $col
         | (if .posted then $col + "✔" else dim + "○" end) + reset + " " + bold + "#\(.number)" + reset
           + "  " + ((.title // $pr[.number | tostring].title // "") | cut($w - 12))
