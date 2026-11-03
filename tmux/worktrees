@@ -27,13 +27,15 @@ list() {
   local repo=$1 base ports
   base=$(base_of "$repo")
   ports=$(curl -s --max-time 0.5 localhost:3333/__branch/list 2>/dev/null | jq -r '.branches[]? | "\(.root)\t\(.port)"' 2>/dev/null)
+  # widest branch name, so the columns after it line up
+  width=$(git -C "$repo" worktree list --porcelain | perl -ne '$w = length($1) if /^branch refs\/heads\/(.*)/ && length($1) > $w; END { print $w || 10 }')
   git -C "$repo" worktree list --porcelain | while read -r k v; do
     case $k in
       worktree) path=$v; branch='(detached)';;
       branch) branch=${v#refs/heads/};;
       '')
         [ -d "$path" ] || continue
-        key=$(printf %s "$branch" | grep -oE '^[A-Z][A-Z0-9]+-[0-9]+' || true)
+        key=$(printf %s "$branch" | grep -oiE '^[a-z][a-z0-9]+-[0-9]+' | tr a-z A-Z || true)
         title='' status=''
         if [ -n "$key" ] && [ -f "$tasks" ]; then
           IFS=$'\t' read -r status title < <(jq -r --arg k "$key" '.[$k] // {} | [(.status // ""), (.title // "")] | @tsv' "$tasks")
@@ -41,10 +43,12 @@ list() {
         dirty=$(git -C "$path" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
         ahead=$(git -C "$path" rev-list --count "$base..HEAD" 2>/dev/null || echo 0)
         port=$(printf '%s\n' "$ports" | awk -F'\t' -v p="$path" '$1 == p {print ":" $2}')
-        name=${branch#"$key"/}
-        printf '%s\t\033[1m%-11s\033[0m \033[35m%-12s\033[0m \033[32m%-6s\033[0m \033[33m%-4s\033[0m \033[36m%-5s\033[0m %s \033[2m%s\033[0m\n' \
-          "$path" "${key:-${branch:0:11}}" "${status//_/ }" "$port" \
-          "$([ "$dirty" -gt 0 ] && echo "✎$dirty")" "$([ "$ahead" -gt 0 ] && echo "↑$ahead")" "$name" "${title:+— $title}"
+        # ticket lowercased: hpnl-13242/localized-promo-prices
+        name=$branch
+        [ -n "$key" ] && name=$(printf %s "${branch:0:${#key}}" | tr A-Z a-z)${branch:${#key}}
+        printf '%s\t\033[1m%-*s\033[0m \033[35m%-12s\033[0m \033[32m%-6s\033[0m \033[33m%-4s\033[0m \033[36m%-4s\033[0m \033[2m%s\033[0m\n' \
+          "$path" "$width" "$name" "${status//_/ }" "$port" \
+          "$([ "$dirty" -gt 0 ] && echo "✎$dirty")" "$([ "$ahead" -gt 0 ] && echo "↑$ahead")" "$title"
         ;;
     esac
   done
