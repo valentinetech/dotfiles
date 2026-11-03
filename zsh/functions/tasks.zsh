@@ -112,17 +112,23 @@ _TASKS_REVIEWS_STATES=~/.cache/tasks-reviews-states.json
 _TASKS_REVIEWS_LEDGER=~/.local/state/claude/review-requested-prs/reviews.jsonl
 # one <number>.json per PR whose review subagent is running (written/removed by review-requested-prs)
 _TASKS_REVIEWS_INFLIGHT=~/.local/state/claude/review-requested-prs/reviewing
+# local, never committed: one GitHub login per line (# comments ok) whose PRs are hidden here
+# and skipped by review-requested-prs
+_TASKS_REVIEWS_SKIP=~/.config/review-skip-authors
 
-# refresh the requested-PR list in the background when it is older than 2 min (never blocks the view)
+# refresh the requested-PR list in the background when it is older than 2 min
+# or the skip list changed since (never blocks the view)
 _tasks_reviews_fetch() {
   local c=$_TASKS_REVIEWS_CACHE
   zmodload -F zsh/stat b:zstat 2>/dev/null; zmodload zsh/datetime 2>/dev/null
-  local age=$(( EPOCHSECONDS - $(zstat +mtime "$c" 2>/dev/null || echo 0) ))
-  (( age < 120 )) && return
+  local cm=$(zstat +mtime "$c" 2>/dev/null || echo 0)
+  (( EPOCHSECONDS - cm < 120 && $(zstat +mtime $_TASKS_REVIEWS_SKIP 2>/dev/null || echo 0) <= cm )) && return
   [[ -e $c.lock ]] && (( EPOCHSECONDS - $(zstat +mtime "$c.lock" 2>/dev/null || echo 0) < 60 )) && return
   mkdir -p ${c:h}; : > $c.lock
+  local -a skip=( ${(f)"$(cat $_TASKS_REVIEWS_SKIP 2>/dev/null)"} )
+  skip=( ${${skip:#\#*}//[[:space:]]/} ); skip=( ${skip:#} )
   ( gh pr list --repo hostinger/hpanel --limit 100 \
-      --search 'is:open -is:draft user-review-requested:@me -author:@me -author:app/dependabot' \
+      --search "is:open -is:draft user-review-requested:@me -author:@me -author:app/dependabot ${skip/#/-author:}" \
       --json number,title,author,headRefOid,updatedAt,url > $c.tmp 2>/dev/null && mv $c.tmp $c
     # title and open/merged/closed for every PR in the ledger (the week's history), one GraphQL call
     local q
