@@ -9,7 +9,8 @@
 #   esc     close
 # Files list:
 #   enter   open the file in $EDITOR        ctrl-l  lazygit
-#   ctrl-s  toggle side-by-side diff        ctrl-d/u  scroll diff
+#   pgup/pgdn, ctrl-d/u  scroll the diff     ctrl-o  diff full screen in less (select and copy there)
+#   ctrl-s  toggle side-by-side diff
 #   esc     back to the worktrees
 # repo: any path inside the repo (default: current directory, else ~/Documents/GitHub/hpanel).
 set -u
@@ -78,11 +79,12 @@ browse() {
   local wt=$1
   files "$wt" | fzf --ansi --delimiter='\t' --with-nth=2 --no-sort --layout=reverse --cycle \
     --prompt="$(basename "$wt")> " \
-    --header='enter edit · ctrl-s side by side · ctrl-d/u scroll · ctrl-l lazygit · esc back' \
+    --header='enter edit · pgup/pgdn scroll · ctrl-o full screen · ctrl-s side by side · ctrl-l lazygit · esc back' \
     --preview="$self --diff '$wt' {1}" \
     --preview-window='right,65%,border-left' \
     --bind="ctrl-s:change-preview($self --diff '$wt' {1} sbs)+change-preview-window(down,75%,border-top)" \
-    --bind='ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up' \
+    --bind='ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up,page-down:preview-page-down,page-up:preview-page-up' \
+    --bind="ctrl-o:execute($self --diff '$wt' {1} | less -R)" \
     --bind="enter:execute(cd '$wt' && \${EDITOR:-nvim} {1})" \
     --bind="ctrl-l:execute(lazygit -p '$wt')+reload($self --files '$wt')"
 }
@@ -100,6 +102,7 @@ list "$repo" | fzf --ansi --delimiter='\t' --with-nth=2 --no-sort --layout=rever
   --header='enter changed files · ctrl-l lazygit · ctrl-w tmux window · ctrl-y copy path · esc close' \
   --preview="$self --files {1} | cut -f2; echo; git -C {1} log --oneline --color $(base_of "$repo")..HEAD" \
   --preview-window='down,45%,border-top' \
+  --bind='page-down:preview-page-down,page-up:preview-page-up' \
   --bind="enter:execute($self --browse {1})+reload($self --list '$repo')" \
   --bind="ctrl-l:execute(lazygit -p {1})+reload($self --list '$repo')" \
   --bind="ctrl-w:execute-silent(tmux new-window -c {1} -n \"\$(basename {1})\")+abort" \
