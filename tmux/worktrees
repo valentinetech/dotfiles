@@ -8,7 +8,9 @@
 #   ctrl-y  copy its path
 #   esc     close
 # Files list:
-#   enter   open the file in $EDITOR        ctrl-l  lazygit
+#   j/k     move                            h/l (or arrows)  fold / unfold a folder (h on a file folds its folder)
+#   W / E   fold / unfold all                /  search (esc closes it, enter keeps the filter)
+#   enter   open the file in $EDITOR, or fold/unfold a folder     ctrl-l  lazygit
 #   pgup/pgdn line by line, ctrl-d/u half a page   ctrl-o  diff full screen in less (select and copy there)
 #   ctrl-s  toggle side-by-side diff
 #   esc     back to the worktrees
@@ -57,14 +59,27 @@ files() {
     git -C "$wt" ls-files --others --exclude-standard | awk '{print "?\t" $0}'
   } | while IFS=$'\t' read -r st f; do
     printf '%s\t%s\t%s\n' "${st:0:1}" "$f" "$(git -C "$wt" diff --numstat "$mb" -- "$f" 2>/dev/null | awk '{print "+" $1 " -" $2}')"
-  done | tree
+  done > "$(state "$wt").rows"
+  tree "$wt"
+}
+
+# Per-worktree scratch: <state>.rows caches the git rows, <state>.collapsed lists folded directories.
+state() {
+  printf %s "${TMPDIR:-/tmp}/worktrees-$(printf %s "$1" | md5 -q)"
 }
 
 # "status \t path \t stat" rows -> a lazygit-style tree. Directories with a single subdirectory are
 # folded into one row (src/components/DomainChecker). Every row's first field is its path, so a
 # directory row previews the diff of everything under it.
+# Collapsed directories show ▸ and hide their contents. `tree <wt> dirs` prints every directory row's
+# path instead, collapsed or not (for collapse all).
 tree() {
+  local s
+  s=$(state "$1")
+  touch "$s.collapsed"
   perl -e '
+    my ($collapsed, $mode) = @ARGV;
+    open my $fh, "<", $collapsed; my %folded = map { chomp; ($_ => 1) } <$fh>;
     my %color = (A => 32, "?" => 32, D => 31, R => 36);
     my $root = { d => {}, f => [] };
     while (<STDIN>) {
@@ -82,16 +97,75 @@ tree() {
         if ($kind eq "d") {
           my ($name, $c) = ($k, $n->{d}{$k});
           while (!@{ $c->{f} } && keys %{ $c->{d} } == 1) { my ($only) = keys %{ $c->{d} }; $name .= "/$only"; $c = $c->{d}{$only} }
-          printf "%s/\t\e[2m%s\e[0m\e[34m%s\e[0m\n", "$dir$name", $branch, $name;
-          walk($c, $next, "$dir$name/");
+          my $path = "$dir$name/";
+          if ($mode eq "dirs") { print "$path\n"; walk($c, $next, $path); next }
+          my $closed = $folded{$path} && $mode ne "all";
+          printf "%s\t\e[2m%s\e[0m\e[34m%s %s\e[0m\n", $path, $branch, $closed ? "▸" : "▾", $name;
+          walk($c, $next, $path) unless $closed;
         } else {
+          next if $mode eq "dirs";
           my ($st, $name, $path, $stat) = @$k;
           printf "%s\t\e[2m%s\e[0m\e[%sm%s\e[0m %s \e[2m%s\e[0m\n", $path, $branch, $color{$st} // 33, $st, $name, $stat;
         }
       }
     }
     walk($root, "", "");
-  '
+  ' "$s.collapsed" "${2:-}" < "$s.rows"
+}
+
+# Keys in the files list. The search input is hidden until `/`; while it is open, letters type.
+# Prints fzf actions for `transform`.
+act() {
+  local key=$1 wt=$2 row=$3 s target parent
+  s=$(state "$wt")
+  if [ "${FZF_INPUT_STATE:-hidden}" != hidden ]; then
+    case $key in
+      esc) echo 'clear-query+hide-input';;
+      enter) echo 'hide-input';;
+      left) echo backward-char;;
+      right) echo forward-char;;
+      *) echo "put($key)";;
+    esac
+    return
+  fi
+  # the directory row that holds this row: the longest directory row path that is a prefix of it
+  parent=$(tree "$wt" dirs | awk -v r="$row" 'index(r, $0) == 1 && r != $0 && length($0) > length(p) { p = $0 } END { print p }')
+  case $key in left) key=h;; right) key=l;; esac
+  target=$row
+  case $key in
+    j) echo down; return;;
+    k) echo up; return;;
+    /) echo show-input; return;;
+    esc) echo abort; return;;
+    enter)
+      case $row in
+        */) toggle "$s" "$row";;
+        *) echo "execute(cd '$wt' && \${EDITOR:-nvim} '$row')"; return;;
+      esac;;
+    h)
+      if [[ $row == */ ]] && ! grep -qxF "$row" "$s.collapsed"; then
+        echo "$row" >> "$s.collapsed"
+      elif [ -n "$parent" ]; then
+        echo "$parent" >> "$s.collapsed"; target=$parent
+      else
+        return
+      fi;;
+    l)
+      if [[ $row == */ ]] && grep -qxF "$row" "$s.collapsed"; then toggle "$s" "$row"; else echo down; return; fi;;
+    W) tree "$wt" dirs > "$s.collapsed"; target=$(tree "$wt" | cut -f1 | awk -v r="$row" 'index(r, $0) == 1 { print; exit }');;
+    E) : > "$s.collapsed";;
+  esac
+  local n
+  n=$(tree "$wt" | cut -f1 | grep -nxF "${target:-$row}" | cut -d: -f1 | head -1)
+  echo "reload-sync($self --tree '$wt')${n:++pos($n)}"
+}
+
+toggle() {
+  if grep -qxF "$2" "$1.collapsed"; then
+    grep -vxF "$2" "$1.collapsed" > "$1.tmp"; mv -f "$1.tmp" "$1.collapsed"
+  else
+    echo "$2" >> "$1.collapsed"
+  fi
 }
 
 diff_one() {
@@ -107,21 +181,26 @@ diff_one() {
 
 browse() {
   local wt=$1
-  files "$wt" | fzf --ansi --delimiter='\t' --with-nth=2 --no-sort --layout=reverse --cycle \
+  local k binds=()
+  for k in j k h l W E / enter esc; do binds+=(--bind="$k:transform:$self --act $k '$wt' {1}"); done
+  files "$wt" | fzf --ansi --delimiter='\t' --with-nth=2 --no-sort --layout=reverse --cycle --no-input \
     --prompt="$(basename "$wt")> " \
-    --header='enter edit · pgup/pgdn scroll · ctrl-o full screen · ctrl-s side by side · ctrl-l lazygit · esc back' \
+    --header='j/k move · h/l fold · W/E fold/unfold all · / search · enter edit · ctrl-o full screen · ctrl-s side by side · ctrl-l lazygit · esc back' \
+    "${binds[@]}" \
+    --bind="left:transform:$self --act left '$wt' {1},right:transform:$self --act right '$wt' {1}" \
     --preview="$self --diff '$wt' {1}" \
     --preview-window='right,65%,border-left' \
     --bind="ctrl-s:change-preview($self --diff '$wt' {1} sbs)+change-preview-window(down,75%,border-top)" \
     --bind='ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up,page-down:preview-down,page-up:preview-up' \
     --bind="ctrl-o:execute($self --diff '$wt' {1} | less -R)" \
-    --bind="enter:execute(cd '$wt' && \${EDITOR:-nvim} {1})" \
     --bind="ctrl-l:execute(lazygit -p '$wt')+reload($self --files '$wt')"
 }
 
 case ${1:-} in
   --list) list "$2"; exit;;
   --files) files "$2"; exit;;
+  --tree) tree "$2"; exit;;
+  --act) act "$2" "$3" "$4"; exit;;
   --diff) diff_one "$2" "$3" "${4:-}"; exit;;
   --browse) browse "$2"; exit;;
 esac
