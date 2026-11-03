@@ -56,12 +56,42 @@ files() {
     git -C "$wt" diff --name-status "$mb" | awk -F'\t' '{print $1 "\t" $NF}'
     git -C "$wt" ls-files --others --exclude-standard | awk '{print "?\t" $0}'
   } | while IFS=$'\t' read -r st f; do
-    stat=$(git -C "$wt" diff --numstat "$mb" -- "$f" 2>/dev/null | awk '{print "+" $1 " -" $2}')
-    case ${st:0:1} in
-      A|'?') c=32;; D) c=31;; R) c=36;; *) c=33;;
-    esac
-    printf '%s\t\033[%sm%-2s\033[0m %s \033[2m%s\033[0m\n' "$f" "$c" "${st:0:1}" "$f" "$stat"
-  done
+    printf '%s\t%s\t%s\n' "${st:0:1}" "$f" "$(git -C "$wt" diff --numstat "$mb" -- "$f" 2>/dev/null | awk '{print "+" $1 " -" $2}')"
+  done | tree
+}
+
+# "status \t path \t stat" rows -> a lazygit-style tree. Directories with a single subdirectory are
+# folded into one row (src/components/DomainChecker). Every row's first field is its path, so a
+# directory row previews the diff of everything under it.
+tree() {
+  perl -e '
+    my %color = (A => 32, "?" => 32, D => 31, R => 36);
+    my $root = { d => {}, f => [] };
+    while (<STDIN>) {
+      chomp; my ($st, $path, $stat) = split /\t/, $_, 3;
+      my @parts = split m{/}, $path; my $name = pop @parts; my $n = $root;
+      $n = $n->{d}{$_} //= { d => {}, f => [] } for @parts;
+      push @{ $n->{f} }, [$st, $name, $path, $stat // ""];
+    }
+    sub walk {
+      my ($n, $prefix, $dir) = @_;
+      my @kids = ((map { [d => $_] } sort keys %{ $n->{d} }), (map { [f => $_] } sort { $a->[1] cmp $b->[1] } @{ $n->{f} }));
+      for my $i (0 .. $#kids) {
+        my $last = $i == $#kids; my ($kind, $k) = @{ $kids[$i] };
+        my $branch = $prefix . ($last ? "└─ " : "├─ "); my $next = $prefix . ($last ? "   " : "│  ");
+        if ($kind eq "d") {
+          my ($name, $c) = ($k, $n->{d}{$k});
+          while (!@{ $c->{f} } && keys %{ $c->{d} } == 1) { my ($only) = keys %{ $c->{d} }; $name .= "/$only"; $c = $c->{d}{$only} }
+          printf "%s/\t\e[2m%s\e[0m\e[34m%s\e[0m\n", "$dir$name", $branch, $name;
+          walk($c, $next, "$dir$name/");
+        } else {
+          my ($st, $name, $path, $stat) = @$k;
+          printf "%s\t\e[2m%s\e[0m\e[%sm%s\e[0m %s \e[2m%s\e[0m\n", $path, $branch, $color{$st} // 33, $st, $name, $stat;
+        }
+      }
+    }
+    walk($root, "", "");
+  '
 }
 
 diff_one() {
