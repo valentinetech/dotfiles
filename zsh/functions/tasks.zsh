@@ -90,10 +90,14 @@ tasks() {
           + " · " + (.updated | ago) + reset
           # several PRs: one line each with its branch and CI state; one PR: its CI line from watch-pr
           + (if $multi then
-              [.prs[] | "\n  " + (if .mergedAt then c("32") + "✔ " else dim + "⑂ " end) + "PR #" + (.pr | prnum) + reset
-                + dim + (if .branch then " · " + .branch else "" end) + reset
-                + (if .mergedAt then c("32") + " · merged" + reset
-                   elif .ci then " " + ciline(.ci; $w - 30) else "" end)] | join("")
+              # merged (recorded, or the ci line from watch-pr says so): green tick, the rest struck through
+              [.prs[] | ("PR #" + (.pr | prnum) + (if .branch then " · " + .branch else "" end)) as $head
+                | if .mergedAt or ((.ci // "") | test("^merged"; "i")) then
+                    "\n  " + c("32") + "✔ " + reset + dim + c("9") + ($head + " · " + (.ci // "merged") | cut($w - 6)) + reset
+                  else
+                    "\n  " + dim + "⑂ " + $head + reset
+                    + (if .ci then " " + ciline(.ci; $w - 8 - ($head | length)) else "" end)
+                  end] | join("")
             elif .ci then "\n  " + ciline(.ci; $w - 6) else "" end)
           # merge-after links: dim while work/review goes on, yellow once this one is approved and only waiting
           + (if (.blockedBy // []) | length > 0 then
