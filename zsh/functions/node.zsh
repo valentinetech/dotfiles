@@ -30,7 +30,8 @@ nodev() {
       out=$( { ls $dir | sort -rV | while read -r v; do [[ v$v == $cur ]] && echo "$v  ● active" || echo "$v  installed"; done
                echo "lts  $(n --lts 2>/dev/null)"; echo "auto  project version"
                n lsr --all 2>/dev/null | grep -vE 'alpha|beta|rc' | grep -vxF -f <(ls $dir) | awk -F. '$1 >= 18 { print $0 "  install" }'; } \
-             | fzf --height=60% --reverse --print-query --prompt="node > " --header="installed first, then versions to install · type any version + enter") || [ -n "$out" ] || return
+             | fzf --height=60% --reverse --print-query --prompt="node > " --header="installed first, then versions to install · type any version + enter")
+      (( $? == 130 )) && return   # esc; 1 = no match, then the typed version is used
       choice=${${(f)out}[2]:-${${(f)out}[1]}}
       [ -n "$choice" ] && nodev ${choice%% *}
       ;;
