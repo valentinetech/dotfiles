@@ -36,6 +36,10 @@ tasks() {
         elif . < 86400 then "\(./3600|floor)h ago" else "\(./86400|floor)d ago" end;
     def cut($n): if length > $n then .[0:$n-1] + "…" else . end;
     def prnum: if . == null then null else capture("/pull/(?<n>[0-9]+)$").n // . end;
+    # CI state from watch-pr: red when something fails, yellow while running/fixing, green when green
+    def ciline($ci; $n): (if ($ci | test("fail|red|conflict|reject"; "i")) then c("31")
+                          elif ($ci | test("green|approved|ready|pass"; "i")) then c("32")
+                          else c("33") end) + "⟳ " + ($ci | cut($n)) + reset;
   '
   case "$1" in
     h)
@@ -71,7 +75,7 @@ tasks() {
         | (if $lim > 0 then [ to_entries[] | select(.key < $lim or (now - (.value.updated | epoch)) < 10800) | .value ] else . end) as $shown
         | (if $lim > 0 and length > ($shown | length) then dim + "  +\(length - ($shown | length)) more · tasks" + reset + "\n" else "" end) as $more
         | $shown
-        | (. as $a | range(0; length) as $i | $a[$i]
+        | (. as $a | range(0; length) as $i | $a[$i] | ((.prs // []) | length > 1) as $multi
         # section header glued to its first task (no blank line), so the watcher keeps it with that task
         | (if $i == 0 or ($a[$i - 1] | section) != section then
              (if section == 2 then c("31") else dim end) + "── " + (section | sname)
@@ -79,14 +83,18 @@ tasks() {
            else "" end)
           + colour(.status) + icon(.status) + reset + " " + bold + .key + reset + "  " + ((.title // "") | cut($w - 16))
           + "\n  " + colour(.status) + stname(.status) + reset + dim
-          + (if .branch then " · " + .branch else "" end)
-          + (if .pr then " · PR #" + (.pr | prnum) else "" end)
+          + (if $multi then "" else
+              (if .branch then " · " + .branch else "" end)
+              + (if .pr then " · PR #" + (.pr | prnum) else "" end) end)
           + (if .agent then " · " + .agent else "" end)
           + " · " + (.updated | ago) + reset
-          # CI line from watch-pr: red when something fails, yellow while running/fixing, green when green
-          + (if .ci then "\n  " + (if (.ci | test("fail|red|conflict|reject"; "i")) then c("31")
-                                   elif (.ci | test("green|approved|ready|pass"; "i")) then c("32")
-                                   else c("33") end) + "⟳ " + (.ci | cut($w - 6)) + reset else "" end)
+          # several PRs: one line each with its branch and CI state; one PR: its CI line from watch-pr
+          + (if $multi then
+              [.prs[] | "\n  " + (if .mergedAt then c("32") + "✔ " else dim + "⑂ " end) + "PR #" + (.pr | prnum) + reset
+                + dim + (if .branch then " · " + .branch else "" end) + reset
+                + (if .mergedAt then c("32") + " · merged" + reset
+                   elif .ci then " " + ciline(.ci; $w - 30) else "" end)] | join("")
+            elif .ci then "\n  " + ciline(.ci; $w - 6) else "" end)
           # merge-after links: dim while work/review goes on, yellow once this one is approved and only waiting
           + (if (.blockedBy // []) | length > 0 then
               ((.ci // "") | test("approved|ready to merge"; "i")) as $ready
