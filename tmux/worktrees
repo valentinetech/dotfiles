@@ -14,7 +14,8 @@
 #   pgup/pgdn line by line, ctrl-d/u half a page   ctrl-o  diff full screen in less (select and copy there)
 #   ctrl-s  toggle side-by-side diff
 #   esc     back to the worktrees
-# repo: any path inside the repo (default: current directory, else ~/Documents/GitHub/hpanel).
+# repo: any path inside a repo to list only that one (default: every repo in ~/Documents/GitHub with
+# worktrees, plus the current one).
 set -u
 self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
 tasks=~/Documents/GitHub/msw-kit/data/tasks.json
@@ -23,11 +24,24 @@ base_of() {
   git -C "$1" rev-parse --verify -q origin/master >/dev/null && echo origin/master || echo origin/main
 }
 
+# Repos to list: the one given, else every repo in ~/Documents/GitHub with linked worktrees (ones whose folder is gone do not count) plus the
+# repo of the current directory.
+repos() {
+  if [ -n "${1:-}" ]; then git -C "$1" rev-parse --show-toplevel; return; fi
+  {
+    git -C "$PWD" rev-parse --show-toplevel 2>/dev/null
+    for d in ~/Documents/GitHub/*/; do
+      [ -e "$d.git" ] && [ "$(git -C "$d" worktree list 2>/dev/null | grep -vc " prunable$")" -gt 1 ] && echo "${d%/}"
+    done
+  } | awk '!seen[$0]++'
+}
+
 list() {
-  local repo=$1 base ports
-  base=$(base_of "$repo")
+  local repo base ports
   ports=$(curl -s --max-time 0.5 localhost:3333/__branch/list 2>/dev/null | jq -r '.branches[]? | "\(.root)\t\(.port)"' 2>/dev/null)
-  git -C "$repo" worktree list --porcelain | { while read -r k v; do
+  repos "${1:-}" | while read -r repo; do
+  base=$(base_of "$repo")
+  git -C "$repo" worktree list --porcelain | while read -r k v; do
     case $k in
       worktree) path=$v; branch='(detached)';;
       branch) branch=${v#refs/heads/};;
@@ -44,25 +58,25 @@ list() {
         # ticket lowercased: hpnl-13242/localized-promo-prices
         name=$branch
         [ -n "$key" ] && name=$(printf %s "${branch:0:${#key}}" | tr A-Z a-z)${branch:${#key}}
-        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$path" "$name" "${status//_/ }" "$port" \
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$path" "$(basename "$repo")" "$name" "${status//_/ }" "$port" \
           "$([ "$dirty" -gt 0 ] && echo "✎$dirty")" "$([ "$ahead" -gt 0 ] && echo "↑$ahead")" "$title"
         ;;
     esac
   done
-  } | columns
+  done | columns
 }
 
-# Raw "path \t branch \t status \t port \t changed \t ahead \t title" rows -> a header row and aligned,
+# Raw "path \t repo \t branch \t status \t port \t changed \t ahead \t title" rows -> a header row and aligned,
 # coloured columns. Padding counts characters, not bytes, so ✎ and ↑ do not push columns out.
 columns() {
   perl -CS -e '
-    my @rows = ([("") , "BRANCH", "STATUS", "PORT", "CHANGED", "AHEAD", "TITLE"]);
-    while (<STDIN>) { chomp; push @rows, [split /\t/, $_, 7] }
-    my @w; for my $r (@rows) { for my $i (1 .. 5) { my $l = length($r->[$i] // ""); $w[$i] = $l if $l > ($w[$i] // 0) } }
-    my @c = (undef, "1", "35", "32", "33", "36", "2");
+    my @rows = ([("") , "REPO", "BRANCH", "STATUS", "PORT", "CHANGED", "AHEAD", "TITLE"]);
+    while (<STDIN>) { chomp; push @rows, [split /\t/, $_, 8] }
+    my @w; for my $r (@rows) { for my $i (1 .. 6) { my $l = length($r->[$i] // ""); $w[$i] = $l if $l > ($w[$i] // 0) } }
+    my @c = (undef, "34", "1", "35", "32", "33", "36", "2");
     for my $n (0 .. $#rows) {
       my $r = $rows[$n];
-      my $line = join "  ", map { my $v = $r->[$_] // ""; my $p = $_ < 6 ? $v . " " x ($w[$_] - length $v) : $v; $n ? "\e[$c[$_]m$p\e[0m" : "\e[2;4m$p\e[0m" } 1 .. 6;
+      my $line = join "  ", map { my $v = $r->[$_] // ""; my $p = $_ < 7 ? $v . " " x ($w[$_] - length $v) : $v; $n ? "\e[$c[$_]m$p\e[0m" : "\e[2;4m$p\e[0m" } 1 .. 7;
       print "$r->[0]\t$line\n";
     }
   '
@@ -215,19 +229,20 @@ browse() {
 }
 
 case ${1:-} in
-  --list) list "$2"; exit;;
+  --list) list "${2:-}"; exit;;
   --files) files "$2"; exit;;
   --tree) tree "$2"; exit;;
   --act) act "$2" "$3" "$4"; exit;;
+  --log) git -C "$2" log --oneline --color "$(base_of "$2")..HEAD"; exit;;
   --diff) diff_one "$2" "$3" "${4:-}"; exit;;
   --browse) browse "$2"; exit;;
 esac
 
-repo=$(git -C "${1:-$PWD}" rev-parse --show-toplevel 2>/dev/null || echo ~/Documents/GitHub/hpanel)
+repo=${1:-}
 list "$repo" | fzf --ansi --delimiter='\t' --with-nth=2 --no-sort --layout=reverse --cycle --header-lines=1 \
   --prompt='worktree> ' \
   --header='enter changed files · ctrl-l lazygit · ctrl-w tmux window · ctrl-y copy path · esc close' \
-  --preview="$self --files {1} | cut -f2; echo; git -C {1} log --oneline --color $(base_of "$repo")..HEAD" \
+  --preview="$self --files {1} | cut -f2; echo; $self --log {1}" \
   --preview-window='down,45%,border-top' \
   --bind='page-down:preview-down,page-up:preview-up' \
   --bind="enter:execute($self --browse {1})+reload($self --list '$repo')" \
