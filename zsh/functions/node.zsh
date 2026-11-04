@@ -1,6 +1,7 @@
 # ---- nodev: switch Node.js versions with n (brew install n) ----
 # nodev                   active version, installed versions, latest LTS / current
 # nodev <version>         install if missing and switch: 24, 24.19, 24.19.0, lts, latest, current
+# nodev pick              choose one with fzf: installed versions, latest LTS, latest
 # nodev auto              the version the current project asks for (.nvmrc, .node-version, package.json engines)
 # nodev rm <version>      remove an installed version (not the active one)
 # n keeps every version in /usr/local/n/versions/node and copies the active one to /usr/local/bin
@@ -21,6 +22,13 @@ nodev() {
         [[ v$v == $active ]] && echo "  ● $v" || echo "    $v"
       done
       echo "latest lts  $(n --lts 2>/dev/null)"
+      ;;
+    pick)
+      local cur=$(node -v 2>/dev/null) choice
+      choice=$( { ls $dir | sort -rV | while read -r v; do [[ v$v == $cur ]] && echo "$v  ● active" || echo "$v"; done
+                  echo "lts  $(n --lts 2>/dev/null)"; echo "latest"; echo "auto  project version"; } \
+                | fzf --height=40% --reverse --prompt="node > ") || return
+      nodev ${choice%% *}
       ;;
     rm|remove)
       [ -n "${2:-}" ] || { echo "usage: nodev rm <version>"; return 1; }
