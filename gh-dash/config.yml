@@ -38,7 +38,7 @@ defaults:
     # Fractions of the screen: width applies when the preview is on the right,
     # height when it is at the bottom.
     width: 0.6
-    height: 0.75
+    height: 0.6
     position: bottom
   layout:
     prs:
