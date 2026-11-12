@@ -10,10 +10,13 @@
 # Files list:
 #   j/k     move                            h/l (or arrows)  fold / unfold a folder (h on a file folds its folder)
 #   W / E   fold / unfold all                /  search (esc closes it, enter keeps the filter)
-#   enter   open the file in $EDITOR, or fold/unfold a folder     ctrl-l  lazygit
+#   enter   the file's changes one by one, or fold/unfold a folder   e  edit the file   ctrl-l  lazygit
 #   pgup/pgdn line by line, ctrl-d/u half a page   ctrl-o  diff full screen in less (select and copy there)
 #   ctrl-s  toggle side-by-side diff
 #   esc     back to the worktrees
+# Changes list (one file, one row per hunk):
+#   j/k     next / previous change          c  comment on it (saved for the task's agent to pick up)
+#   e/enter edit the file at that line      esc  back to the files
 # repo: any path inside a repo to list only that one (default: every repo in ~/Documents/GitHub with
 # worktrees, plus the current one).
 set -u
@@ -168,11 +171,12 @@ act() {
     j) echo down; return;;
     k) echo up; return;;
     /) echo show-input; return;;
+    e) [[ $row == */ ]] || echo "execute(cd '$wt' && \${EDITOR:-nvim} '$row')"; return;;
     esc) echo abort; return;;
     enter)
       case $row in
         */) toggle "$s" "$row";;
-        *) echo "execute(cd '$wt' && \${EDITOR:-nvim} '$row')"; return;;
+        *) echo "execute($self --changes '$wt' '$row')+reload-sync($self --tree '$wt')"; return;;
       esac;;
     h)
       if [[ $row == */ ]] && ! grep -qxF "$row" "$s.collapsed"; then
@@ -200,24 +204,141 @@ toggle() {
   fi
 }
 
-diff_one() {
-  local wt=$1 f=$2 mode=${3:-} mb
+# The file's diff against the merge base with master (untracked files: all of it as added).
+raw_diff() {
+  local wt=$1 f=$2 mb
   mb=$(git -C "$wt" merge-base HEAD "$(base_of "$wt")" 2>/dev/null || echo HEAD)
   cd "$wt" || exit
   if git ls-files --error-unmatch -- "$f" >/dev/null 2>&1 || git cat-file -e "$mb:$f" 2>/dev/null; then
     git diff "$mb" -- "$f"
   else
     git diff --no-index -- /dev/null "$f"
-  fi | delta --paging=never --width="$(( ${FZF_PREVIEW_COLUMNS:-$(tput cols)} - 2 ))" --hunk-header-decoration-style="blue ul" --hunk-header-style="line-number syntax" ${mode:+--side-by-side}
+  fi
+}
+
+render() {
+  delta --paging=never --width="$(( ${FZF_PREVIEW_COLUMNS:-$(tput cols)} - 2 ))" --hunk-header-decoration-style="blue ul" --hunk-header-style="line-number syntax" ${1:+--side-by-side}
+}
+
+diff_one() {
+  raw_diff "$1" "$2" | render "${3:-}"
+}
+
+# ---- review comments: c on a change saves it for the task, so an agent picks it up in review ----
+# One JSONL file per task in msw-kit/data/comments/<KEY>.jsonl; the msw-kit tasks_comments tool reads
+# and resolves them, tasks w shows the open count.
+comments_dir=~/Documents/GitHub/msw-kit/data/comments
+
+# Task key for a worktree: the ticket in its branch name, else the tracker task that lists this
+# branch, else the branch name itself (adhoc/foo -> adhoc-foo).
+task_key() {
+  local branch key
+  branch=$(git -C "$1" branch --show-current)
+  key=$(printf %s "$branch" | grep -oiE '^[a-z][a-z0-9]+-[0-9]+' | tr a-z A-Z)
+  [ -n "$key" ] || key=$(jq -r --arg b "$branch" 'to_entries[] | select(.value.branch == $b or ((.value.prs // []) | any(.branch == $b))) | .key' "$tasks" 2>/dev/null | head -1)
+  [ -n "$key" ] || key=$(printf %s "$branch" | tr '/' '-' | tr A-Z a-z)
+  printf %s "$key"
+}
+
+# Hunks of one file: "index \t new-file line \t display" rows; the display carries the comment count.
+hunks() {
+  local wt=$1 f=$2 key
+  key=$(task_key "$wt")
+  raw_diff "$wt" "$f" | perl -CS -Mutf8 -e '
+    my ($file, $cfile) = @ARGV; my %count;
+    if (open my $c, "<:utf8", $cfile) { while (<$c>) { $count{"$1"}++ if /"file":"\Q$file\E".*"line":(\d+).*"status":"open"/ } }
+    # line = first changed line in the new file (where a deletion-only change sits)
+    my ($i, $cur, $line, $ctx, $first, $add, $del) = (0);
+    my $flush = sub {
+      return unless $i;
+      my $n = $count{$line} ? sprintf("  \e[33m💬%d\e[0m", $count{$line}) : "";
+      printf "%d\t%d\t\e[2mL%-5d\e[0m \e[32m+%d\e[0m \e[31m-%d\e[0m  %s\e[2m%s\e[0m%s\n", $i, $line, $line, $add, $del, $first // "", $ctx ? "  · $ctx" : "", $n;
+    };
+    while (<STDIN>) {
+      chomp;
+      if (/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@ ?(.*)/) { $flush->(); $i++; ($cur, $line, $ctx, $first, $add, $del) = ($1, undef, substr($2, 0, 40), undef, 0, 0); next }
+      next unless $i;
+      if (/^([+-])(.*)/) {
+        $line //= $cur; $1 eq "+" ? $add++ : $del++;
+        ($first //= $2) =~ s/^\s+//; $first = substr($first, 0, 70);
+        $cur++ if $1 eq "+";
+      } elsif (/^ /) { $cur++ }
+    }
+    $flush->();
+  ' "$f" "$comments_dir/$key.jsonl"
+}
+
+# Diff header plus hunk <n> only, so the preview shows just that change; open comments on it below.
+hunk_diff() {
+  local wt=$1 f=$2 n=$3 key
+  key=$(task_key "$wt")
+  raw_diff "$wt" "$f" | perl -e '
+    my $n = shift; my ($i, @head) = (0);
+    while (<STDIN>) { if (/^@@/) { $i++ } if (!$i) { push @head, $_ } elsif ($i == $n) { print @head if @head; @head = (); print } }
+  ' "$n" | render
+  local line
+  line=$(hunks "$wt" "$f" | awk -F'\t' -v n="$n" '$1 == n { print $2 }')
+  [ -f "$comments_dir/$key.jsonl" ] && jq -r --arg f "$f" --argjson l "${line:-0}" \
+    'select(.file == $f and .line == $l and .status == "open") | "\u001b[33m💬 " + .text + "\u001b[0m"' "$comments_dir/$key.jsonl"
+}
+
+add_comment() {
+  local wt=$1 f=$2 n=$3 text=$4 key line snippet
+  [ -n "${text// }" ] || return
+  key=$(task_key "$wt")
+  line=$(hunks "$wt" "$f" | awk -F'\t' -v n="$n" '$1 == n { print $2 }')
+  snippet=$(raw_diff "$wt" "$f" | perl -e 'my $n = shift; my $i = 0; while (<STDIN>) { $i++ if /^@@/; print if $i == $n }' "$n" | head -60)
+  mkdir -p "$comments_dir"
+  jq -cn --arg id "$(openssl rand -hex 4)" --arg ts "$(date -u +%FT%TZ)" --arg key "$key" \
+    --arg branch "$(git -C "$wt" branch --show-current)" --arg worktree "$wt" --arg file "$f" \
+    --argjson line "${line:-0}" --arg hunk "$snippet" --arg text "$text" \
+    '{id: $id, ts: $ts, key: $key, branch: $branch, worktree: $worktree, file: $file, line: $line, hunk: $hunk, text: $text, status: "open"}' \
+    >> "$comments_dir/$key.jsonl"
+}
+
+# Keys in the changes list (one file). c opens the comment input; enter saves it, esc drops it.
+act_hunk() {
+  local key=$1 wt=$2 f=$3 n=$4 line
+  local back="clear-query+hide-input+change-prompt($(basename "$f")> )"
+  if [ "${FZF_INPUT_STATE:-hidden}" != hidden ]; then
+    case $key in
+      enter) add_comment "$wt" "$f" "$n" "${FZF_QUERY:-}"
+             echo "$back+reload-sync($self --hunks '$wt' '$f')+pos($n)+refresh-preview";;
+      esc) echo "$back";;
+      *) echo "put($key)";;
+    esac
+    return
+  fi
+  case $key in
+    j) echo down;;
+    k) echo up;;
+    c) echo 'show-input+change-prompt(💬 comment on this change, enter saves, esc cancels> )';;
+    e|enter) line=$(hunks "$wt" "$f" | awk -F'\t' -v n="$n" '$1 == n { print $2 }')
+             echo "execute(cd '$wt' && \${EDITOR:-nvim} +${line:-1} '$f')";;
+    esc) echo abort;;
+  esac
+}
+
+changes() {
+  local wt=$1 f=$2 k binds=()
+  for k in j k c e enter esc; do binds+=(--bind="$k:transform:$self --act-hunk $k '$wt' '$f' {1}"); done
+  hunks "$wt" "$f" | fzf --ansi --delimiter='\t' --with-nth=3 --no-sort --layout=reverse --cycle --no-input --disabled \
+    --prompt="$(basename "$f")> " \
+    --header="$f · j/k next/previous change · c comment · e edit here · ctrl-s side by side · esc back" \
+    "${binds[@]}" \
+    --preview="$self --hunk '$wt' '$f' {1}" \
+    --preview-window='right,70%,border-left' \
+    --bind='ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up,page-down:preview-down,page-up:preview-up' \
+    --bind="ctrl-s:change-preview($self --diff '$wt' '$f' sbs)+change-preview-window(down,75%,border-top)"
 }
 
 browse() {
   local wt=$1
   local k binds=()
-  for k in j k h l W E / enter esc; do binds+=(--bind="$k:transform:$self --act $k '$wt' {1}"); done
+  for k in j k h l W E e / enter esc; do binds+=(--bind="$k:transform:$self --act $k '$wt' {1}"); done
   files "$wt" | fzf --ansi --delimiter='\t' --with-nth=2 --no-sort --layout=reverse --cycle --no-input \
     --prompt="$(basename "$wt")> " \
-    --header='j/k move · h/l fold · W/E fold/unfold all · / search · enter edit · ctrl-o full screen · ctrl-s side by side · ctrl-l lazygit · esc back' \
+    --header='j/k move · h/l fold · W/E fold/unfold all · / search · enter changes + comments · e edit · ctrl-o full screen · ctrl-s side by side · ctrl-l lazygit · esc back' \
     "${binds[@]}" \
     --bind="left:transform:$self --act left '$wt' {1},right:transform:$self --act right '$wt' {1}" \
     --preview="$self --diff '$wt' {1}" \
@@ -233,6 +354,10 @@ case ${1:-} in
   --files) files "$2"; exit;;
   --tree) tree "$2"; exit;;
   --act) act "$2" "$3" "$4"; exit;;
+  --act-hunk) act_hunk "$2" "$3" "$4" "$5"; exit;;
+  --hunks) hunks "$2" "$3"; exit;;
+  --hunk) hunk_diff "$2" "$3" "$4"; exit;;
+  --changes) changes "$2" "$3"; exit;;
   --log) git -C "$2" log --oneline --color "$(base_of "$2")..HEAD"; exit;;
   --diff) diff_one "$2" "$3" "${4:-}"; exit;;
   --browse) browse "$2"; exit;;

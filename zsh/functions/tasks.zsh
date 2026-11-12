@@ -54,7 +54,10 @@ tasks() {
     "")
       [ -f "$open" ] || { echo "no open tasks"; return }
       # _TASKS_LIMIT=n (set by the watcher) shows only the n most recently updated, plus a "+n more" line
-      jq -r --argjson w "$cols" --argjson lim "${_TASKS_LIMIT:-0}" "$lib"'
+      # open review comments per task, left with c in the worktree picker (tmux prefix g)
+      local -a cfiles=( $_TASKS_DIR/comments/*.jsonl(N) ); local cm='{}'
+      (( ${#cfiles} )) && cm=$(cat "${(@)cfiles}" | jq -cs 'map(select(.status == "open")) | group_by(.key) | map({key: .[0].key, value: length}) | from_entries' 2>/dev/null || echo '{}')
+      jq -r --argjson w "$cols" --argjson lim "${_TASKS_LIMIT:-0}" --argjson cm "$cm" "$lib"'
         . as $open
         # priority: what needs you first, then work in flight, then waiting on others, then not started;
         # newest update first inside each group
@@ -106,6 +109,7 @@ tasks() {
                 + ([.blockedBy[] | . as $b | $b + " (" + (($open[$b].status // "not tracked") | stname(.)) + ")"] | join(", "))
                 + (if $ready then " · approved, waiting" else "" end) + reset
             else "" end)
+          + (if $cm[.key] then "\n  " + c("33") + "💬 " + ($cm[.key] | tostring) + " review comment" + (if $cm[.key] > 1 then "s" else "" end) + " from you, open" + reset else "" end)
           + (if (.notes | length) > 0 then "\n  " + dim + "↳ " + reset + (.notes[-1].text | cut($w - 4)) else "" end)
           + "\n"), $more end' "$open"
       ;;
@@ -245,7 +249,7 @@ _tasks_watch() {
       # the list itself refreshes every 2 min in the background
       (( tick % 30 == 0 )) && _tasks_reviews_fetch
     else
-    sig="$(zstat +mtime "$open" 2>/dev/null)/$(zstat +mtime "$hist" 2>/dev/null)/${COLUMNS}"
+    sig="$(zstat +mtime "$open" 2>/dev/null)/$(zstat +mtime "$hist" 2>/dev/null)/$(zstat +mtime $_TASKS_DIR/comments/*.jsonl(N.om[1]) 2>/dev/null)/${COLUMNS}"
     if [[ "$sig" != "$last" || $tick -ge 60 ]]; then
       # key -> updated for open tasks, plus "done" markers for everything in history
       snap=$(jq -c -s '(.[0] // {} | map_values(.updated)) + (.[1] // {} | map_values("done"))' "$open" "$hist" 2>/dev/null) || snap='{}'
