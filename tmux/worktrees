@@ -398,9 +398,10 @@ EOF
 # sweep [-n]: retire every worktree whose branch's PR is merged, in every repo with worktrees; -n only lists.
 # Worktrees whose folder is gone are pruned. Main checkouts are never touched.
 sweep() {
-  local dry=${1:-} repo path branch pr n=0
+  local dry=${1:-} repo path branch pr n=0 d
+  # registrations whose folder is gone, in every repo (repos() skips repos that only have those)
+  if [ "$dry" != -n ]; then for d in ~/Documents/GitHub/*/; do [ -e "$d.git" ] && git -C "$d" worktree prune; done; fi
   for repo in $(repos ''); do
-    [ "$dry" = -n ] || git -C "$repo" worktree prune
     while IFS=$'\t' read -r path branch; do
       [ "$path" = "$repo" ] || [ -z "$branch" ] || [ ! -d "$path" ] && continue
       pr=$(pr_state "$path" "$branch")
