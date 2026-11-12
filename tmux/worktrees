@@ -299,7 +299,9 @@ add_comment() {
 # Keys in the changes list (one file). c opens the comment input; enter saves it, esc drops it.
 act_hunk() {
   local key=$1 wt=$2 f=$3 n=$4 line
-  local back="clear-query+hide-input+change-prompt($(basename "$f")> )"
+  local header="$f · j/k next/previous change · c comment · e edit here · ctrl-s side by side · esc back"
+  # commenting: the diff moves below so the input gets the full width; back restores the layout
+  local back="clear-query+hide-input+change-prompt($(basename "$f")> )+change-header($header)+change-preview-window(right,70%,border-left)"
   if [ "${FZF_INPUT_STATE:-hidden}" != hidden ]; then
     case $key in
       enter) add_comment "$wt" "$f" "$n" "${FZF_QUERY:-}"
@@ -312,7 +314,8 @@ act_hunk() {
   case $key in
     j) echo down;;
     k) echo up;;
-    c) echo 'show-input+change-prompt(💬 comment on this change, enter saves, esc cancels> )';;
+    c) line=$(hunks "$wt" "$f" | awk -F'\t' -v n="$n" '$1 == n { print $2 }')
+       echo "show-input+change-prompt(💬 )+change-header(comment on $(basename "$f"):$line · enter saves · esc cancels)+change-preview-window(down,60%,border-top)";;
     e|enter) line=$(hunks "$wt" "$f" | awk -F'\t' -v n="$n" '$1 == n { print $2 }')
              echo "execute(cd '$wt' && \${EDITOR:-nvim} +${line:-1} '$f')";;
     esc) echo abort;;
