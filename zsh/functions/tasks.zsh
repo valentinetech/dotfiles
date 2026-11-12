@@ -25,10 +25,11 @@ tasks() {
                     elif $s == "testing" or $s == "linting" then c("36")
                     elif $s == "verifying" or $s == "e2e" or $s == "self_review" then c("34")
                     elif $s == "blocked" then c("31") elif $s == "human_review" then c("1;36") elif $s == "review" then c("35")
+                    elif $s == "ready_for_review" then c("1;32")
                     elif $s == "done" then c("32") else c("90") end;
     # one glyph per status (all single-width, so the columns stay aligned)
     def icon($s): {todo: "○", in_progress: "◐", implementing: "✎", testing: "◇", linting: "≡",
-                   verifying: "◉", e2e: "▷", self_review: "⊙", blocked: "✖", review: "◎", human_review: "★", done: "✔"}[$s] // "●";
+                   verifying: "◉", e2e: "▷", self_review: "⊙", blocked: "✖", review: "◎", human_review: "★", ready_for_review: "◆", done: "✔"}[$s] // "●";
     def stname($s): $s | gsub("_"; " ");
     def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
     def ago: (now - epoch) | floor
@@ -57,22 +58,32 @@ tasks() {
       # open review comments per task, left with c in the worktree picker (tmux prefix g)
       local -a cfiles=( $_TASKS_DIR/comments/*.jsonl(N) ); local cm='{}'
       (( ${#cfiles} )) && cm=$(cat "${(@)cfiles}" | jq -cs 'map(select(.status != "resolved")) | group_by(.key) | map({key: .[0].key, value: {open: map(select(.status == "open")) | length, working: map(select(.status == "working")) | length}}) | from_entries' 2>/dev/null || echo '{}')
-      jq -r --argjson w "$cols" --argjson lim "${_TASKS_LIMIT:-0}" --argjson cm "$cm" "$lib"'
-        . as $open
+      # draft or not per open PR (GitHub, refreshed every 2 min in the background)
+      _tasks_prs_fetch
+      local dr='{}'; [[ -s $_TASKS_PR_DRAFTS ]] && dr=$(<$_TASKS_PR_DRAFTS)
+      jq -r --argjson w "$cols" --argjson lim "${_TASKS_LIMIT:-0}" --argjson cm "$cm" --argjson dr "$dr" "$lib"'
+        # a PR the user marked ready counts as ready_for_review even before watch-pr notices
+        map_values(if (.status | IN("review", "human_review"))
+                      and ([(.prs // [{pr: .pr}])[] | select(.pr and (.mergedAt | not)) | $dr[.pr]] as $d
+                           | ($d | length) > 0 and all($d[]; . == false))
+                   then .status = "ready_for_review" else . end)
+        | . as $open
         # priority: what needs you first, then work in flight, then waiting on others, then not started;
         # newest update first inside each group
         | def rank: if .status == "blocked" then 0
                     elif .status == "human_review" then 1
                     elif (.status | IN("implementing", "testing", "linting", "verifying", "e2e", "self_review", "in_progress")) then 2
-                    elif .status == "review" then 3
+                    elif (.status | IN("review", "ready_for_review")) then 3
                     elif .status == "todo" then 4 else 5 end;
         # sections in this order: needs you (blocked on you: auth, an install, a decision; or a green draft
-        # waiting for your review), in progress (incl. todo), in review (bot fixing the draft, or reviewers on a
-        # ready PR), ad hoc (no ticket key; a blocked ad hoc task still goes to needs you)
+        # waiting for your review), in progress (incl. todo), in review (draft PR, the bot fixing CI and bot
+        # comments), ready for review (you marked it ready: teammates review), ad hoc (no ticket key; a blocked
+        # ad hoc task still goes to needs you)
         def section: if (.status | IN("human_review", "blocked")) then 0
-                       elif (.key | startswith("adhoc-")) then 3
-                       elif .status == "review" then 2 else 1 end;
-        def sname: ["Needs you", "In progress", "In review", "Ad hoc"][.];
+                       elif (.key | startswith("adhoc-")) then 4
+                       elif .status == "review" then 2
+                       elif .status == "ready_for_review" then 3 else 1 end;
+        def sname: ["Needs you", "In progress", "In review", "Ready for review", "Ad hoc"][.];
         to_entries | map(.value) | if length == 0 then "no open tasks" else
         sort_by([section, rank, -(.updated | epoch)])
         | (map(section) | group_by(.) | map({key: (.[0] | tostring), value: length}) | from_entries) as $count
@@ -126,6 +137,24 @@ tasks() {
         || echo "no task $key"
       ;;
   esac
+}
+
+# ---- draft or ready, per open task PR: { "<pr url>": isDraft } ----
+_TASKS_PR_DRAFTS=~/.cache/tasks-pr-drafts.json
+_tasks_prs_fetch() {
+  local c=$_TASKS_PR_DRAFTS
+  zmodload -F zsh/stat b:zstat 2>/dev/null; zmodload zsh/datetime 2>/dev/null
+  (( EPOCHSECONDS - $(zstat +mtime "$c" 2>/dev/null || echo 0) < 120 )) && return
+  [[ -e $c.lock ]] && (( EPOCHSECONDS - $(zstat +mtime "$c.lock" 2>/dev/null || echo 0) < 60 )) && return
+  mkdir -p ${c:h}; : > $c.lock
+  ( local u out='{}' d
+    for u in ${(f)"$(jq -r '.[] | select(.status | IN("review", "human_review", "ready_for_review"))
+                     | (.prs // [{pr: .pr}])[] | select(.pr and (.mergedAt | not)) | .pr' $_TASKS_DIR/tasks.json 2>/dev/null)"}; do
+      [[ $u == https://github.com/* ]] || continue
+      d=$(gh pr view "$u" --json isDraft -q .isDraft 2>/dev/null) && out=$(jq -c --arg u "$u" --argjson d "$d" '.[$u] = $d' <<< "$out")
+    done
+    print -r -- "$out" > $c.tmp && mv $c.tmp $c
+    rm -f $c.lock ) &!
 }
 
 # ---- reviews view (r in the watcher): PRs waiting on your review, joined with the review ledger ----
@@ -255,7 +284,7 @@ _tasks_watch() {
       # the list itself refreshes every 2 min in the background
       (( tick % 30 == 0 )) && _tasks_reviews_fetch
     else
-    sig="$(zstat +mtime "$open" 2>/dev/null)/$(zstat +mtime "$hist" 2>/dev/null)/$(zstat +mtime $_TASKS_DIR/comments/*.jsonl(N.om[1]) 2>/dev/null)/${COLUMNS}"
+    sig="$(zstat +mtime "$open" 2>/dev/null)/$(zstat +mtime "$hist" 2>/dev/null)/$(zstat +mtime $_TASKS_DIR/comments/*.jsonl(N.om[1]) 2>/dev/null)/$(zstat +mtime $_TASKS_PR_DRAFTS 2>/dev/null)/${COLUMNS}"
     if [[ "$sig" != "$last" || $tick -ge 60 ]]; then
       # key -> updated for open tasks, plus "done" markers for everything in history
       snap=$(jq -c -s '(.[0] // {} | map_values(.updated)) + (.[1] // {} | map_values("done"))' "$open" "$hist" 2>/dev/null) || snap='{}'
