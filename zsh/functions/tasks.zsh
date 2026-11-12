@@ -23,12 +23,12 @@ tasks() {
     def dim: c("2");  def bold: c("1");  def reset: c("0");
     def colour($s): if $s == "in_progress" or $s == "implementing" then c("33")
                     elif $s == "testing" or $s == "linting" then c("36")
-                    elif $s == "verifying" or $s == "e2e" then c("34")
+                    elif $s == "verifying" or $s == "e2e" or $s == "self_review" then c("34")
                     elif $s == "blocked" then c("31") elif $s == "human_review" then c("1;36") elif $s == "review" then c("35")
                     elif $s == "done" then c("32") else c("90") end;
     # one glyph per status (all single-width, so the columns stay aligned)
     def icon($s): {todo: "○", in_progress: "◐", implementing: "✎", testing: "◇", linting: "≡",
-                   verifying: "◉", e2e: "▷", blocked: "✖", review: "◎", human_review: "★", done: "✔"}[$s] // "●";
+                   verifying: "◉", e2e: "▷", self_review: "⊙", blocked: "✖", review: "◎", human_review: "★", done: "✔"}[$s] // "●";
     def stname($s): $s | gsub("_"; " ");
     def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
     def ago: (now - epoch) | floor
@@ -63,7 +63,7 @@ tasks() {
         # newest update first inside each group
         | def rank: if .status == "blocked" then 0
                     elif .status == "human_review" then 1
-                    elif (.status | IN("implementing", "testing", "linting", "verifying", "e2e", "in_progress")) then 2
+                    elif (.status | IN("implementing", "testing", "linting", "verifying", "e2e", "self_review", "in_progress")) then 2
                     elif .status == "review" then 3
                     elif .status == "todo" then 4 else 5 end;
         # sections in this order: in progress (incl. todo), in review, blocked, ad hoc (no ticket key)
@@ -261,7 +261,7 @@ _tasks_watch() {
               if .value == "done" then "\u001b[32m✔ \(.key)\u001b[0m done"
               else ($open[.key]) as $t
                 | "\u001b[33m" + ({todo: "○", in_progress: "◐", implementing: "✎", testing: "◇", linting: "≡",
-                    verifying: "◉", e2e: "▷", blocked: "✖", review: "◎", human_review: "★"}[$t.status // ""] // "●")
+                    verifying: "◉", e2e: "▷", self_review: "⊙", blocked: "✖", review: "◎", human_review: "★"}[$t.status // ""] // "●")
                   + " \(.key)\u001b[0m \($t.status // "")"
                   + (if ($t.agent // "") != "" then " · \($t.agent)" else "" end)
                   + (if ($t.notes | length) > 0 then " · \($t.notes[-1].text)" else "" end)
