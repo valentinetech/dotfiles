@@ -248,13 +248,20 @@ hunks() {
   local wt=$1 f=$2 key
   key=$(task_key "$wt")
   raw_diff "$wt" "$f" | perl -CS -Mutf8 -e '
-    my ($file, $cfile) = @ARGV; my %count;
-    if (open my $c, "<:utf8", $cfile) { while (<$c>) { $count{"$1"}++ if /"file":"\Q$file\E".*"line":(\d+).*"status":"open"/ } }
+    use JSON::PP;
+    my ($file, $cfile) = @ARGV; my %count;   # line -> status -> n
+    if (open my $c, "<:utf8", $cfile) {
+      while (<$c>) { my $j = eval { JSON::PP->new->decode($_) } or next; $count{$j->{line}}{$j->{status}}++ if $j->{file} eq $file }
+    }
     # line = first changed line in the new file (where a deletion-only change sits)
     my ($i, $cur, $line, $ctx, $first, $add, $del) = (0);
     my $flush = sub {
       return unless $i;
-      my $n = $count{$line} ? sprintf("  \e[33m💬%d\e[0m", $count{$line}) : "";
+      # 💬 open, 🔧 an agent is on it, ✓ resolved
+      my $k = $count{$line // 0} || {}; my $n = "";
+      $n .= sprintf("  \e[33m💬%d\e[0m", $k->{open}) if $k->{open};
+      $n .= sprintf("  \e[34m🔧%d\e[0m", $k->{working}) if $k->{working};
+      $n .= sprintf("  \e[2;32m✓%d\e[0m", $k->{resolved}) if $k->{resolved};
       printf "%d\t%d\t\e[2mL%-5d\e[0m \e[32m+%d\e[0m \e[31m-%d\e[0m  %s\e[2m%s\e[0m%s\n", $i, $line, $line, $add, $del, $first // "", $ctx ? "  · $ctx" : "", $n;
     };
     while (<STDIN>) {
@@ -271,7 +278,7 @@ hunks() {
   ' "$f" "$comments_dir/$key.jsonl"
 }
 
-# Diff header plus hunk <n> only, so the preview shows just that change; open comments on it below.
+# Diff header plus hunk <n> only, so the preview shows just that change; its comments below (resolved ones with the reply).
 hunk_diff() {
   local wt=$1 f=$2 n=$3 key
   key=$(task_key "$wt")
@@ -282,7 +289,10 @@ hunk_diff() {
   local line
   line=$(hunks "$wt" "$f" | awk -F'\t' -v n="$n" '$1 == n { print $2 }')
   [ -f "$comments_dir/$key.jsonl" ] && jq -r --arg f "$f" --argjson l "${line:-0}" \
-    'select(.file == $f and .line == $l and .status == "open") | "\u001b[33m💬 " + .text + "\u001b[0m"' "$comments_dir/$key.jsonl"
+    'select(.file == $f and .line == $l)
+     | if .status == "open" then "\u001b[33m💬 " + .text + "\u001b[0m"
+       elif .status == "working" then "\u001b[34m🔧 " + .text + "  (agent working on it)\u001b[0m"
+       else "\u001b[2;32m✓ " + .text + "\u001b[0m" + (if .reply then "\n\u001b[2m  ↳ " + .reply + "\u001b[0m" else "" end) end' "$comments_dir/$key.jsonl"
 }
 
 add_comment() {

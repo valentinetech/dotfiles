@@ -56,7 +56,7 @@ tasks() {
       # _TASKS_LIMIT=n (set by the watcher) shows only the n most recently updated, plus a "+n more" line
       # open review comments per task, left with c in the worktree picker (tmux prefix g)
       local -a cfiles=( $_TASKS_DIR/comments/*.jsonl(N) ); local cm='{}'
-      (( ${#cfiles} )) && cm=$(cat "${(@)cfiles}" | jq -cs 'map(select(.status == "open")) | group_by(.key) | map({key: .[0].key, value: length}) | from_entries' 2>/dev/null || echo '{}')
+      (( ${#cfiles} )) && cm=$(cat "${(@)cfiles}" | jq -cs 'map(select(.status != "resolved")) | group_by(.key) | map({key: .[0].key, value: {open: map(select(.status == "open")) | length, working: map(select(.status == "working")) | length}}) | from_entries' 2>/dev/null || echo '{}')
       jq -r --argjson w "$cols" --argjson lim "${_TASKS_LIMIT:-0}" --argjson cm "$cm" "$lib"'
         . as $open
         # priority: what needs you first, then work in flight, then waiting on others, then not started;
@@ -111,7 +111,11 @@ tasks() {
                 + ([.blockedBy[] | . as $b | $b + " (" + (($open[$b].status // "not tracked") | stname(.)) + ")"] | join(", "))
                 + (if $ready then " · approved, waiting" else "" end) + reset
             else "" end)
-          + (if $cm[.key] then "\n  " + c("33") + "💬 " + ($cm[.key] | tostring) + " review comment" + (if $cm[.key] > 1 then "s" else "" end) + " from you, open" + reset else "" end)
+          # your review comments: 💬 open, 🔧 an agent is fixing them
+          + (if $cm[.key] then "\n  "
+               + ([ (if $cm[.key].open > 0 then c("33") + "💬 \($cm[.key].open) open" + reset else empty end),
+                    (if $cm[.key].working > 0 then c("34") + "🔧 \($cm[.key].working) being fixed" + reset else empty end) ] | join(dim + " · " + reset))
+               + dim + " (your review comments)" + reset else "" end)
           + (if (.notes | length) > 0 then "\n  " + dim + "↳ " + reset + (.notes[-1].text | cut($w - 4)) else "" end)
           + "\n"), $more end' "$open"
       ;;
