@@ -66,11 +66,13 @@ tasks() {
                     elif (.status | IN("implementing", "testing", "linting", "verifying", "e2e", "self_review", "in_progress")) then 2
                     elif .status == "review" then 3
                     elif .status == "todo" then 4 else 5 end;
-        # sections in this order: in progress (incl. todo), in review, blocked, ad hoc (no ticket key)
-        def section: if (.key | startswith("adhoc-")) then 3
-                       elif .status == "blocked" then 2
-                       elif (.status | IN("review", "human_review")) then 1 else 0 end;
-        def sname: ["In progress", "In review", "Blocked", "Ad hoc"][.];
+        # sections in this order: your review (draft green, waiting for you), in progress (incl. todo),
+        # in review (bot fixing the draft, or reviewers on a ready PR), blocked, ad hoc (no ticket key)
+        def section: if (.key | startswith("adhoc-")) then 4
+                       elif .status == "human_review" then 0
+                       elif .status == "blocked" then 3
+                       elif .status == "review" then 2 else 1 end;
+        def sname: ["Your review", "In progress", "In review", "Blocked", "Ad hoc"][.];
         to_entries | map(.value) | if length == 0 then "no open tasks" else
         sort_by([section, rank, -(.updated | epoch)])
         | (map(section) | group_by(.) | map({key: (.[0] | tostring), value: length}) | from_entries) as $count
@@ -81,7 +83,7 @@ tasks() {
         | (. as $a | range(0; length) as $i | $a[$i] | ((.prs // []) | length > 1) as $multi
         # section header glued to its first task (no blank line), so the watcher keeps it with that task
         | (if $i == 0 or ($a[$i - 1] | section) != section then
-             (if section == 2 then c("31") else dim end) + "── " + (section | sname)
+             (if section == 3 then c("31") elif section == 0 then c("1;36") else dim end) + "── " + (section | sname)
              + " (" + ($count[section | tostring] | tostring) + ") ──" + reset + "\n"
            else "" end)
           + colour(.status) + icon(.status) + reset + " " + bold + .key + reset + "  " + ((.title // "") | cut($w - 16))
