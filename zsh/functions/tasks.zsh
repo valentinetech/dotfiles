@@ -371,3 +371,13 @@ _tasks_rows() {
   done
   print $n
 }
+
+# wtsweep: list worktrees (any repo in ~/Documents/GitHub) whose PR is merged, then retire them on y:
+# uncommitted work archived to ~/Documents/GitHub/.worktree-archive, worktree removed, branch deleted if safe.
+# One worktree: ctrl-x in the tmux worktree picker (prefix g).
+wtsweep() {
+  local wt=~/Documents/GitHub/dotfiles/tmux/worktrees out
+  out=$($wt --sweep -n); print -r -- "$out"
+  [[ $out == would* ]] || return 0
+  read -q "?retire these? [y/N] " && { echo; $wt --sweep; } || echo
+}

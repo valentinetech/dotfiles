@@ -6,7 +6,10 @@
 #   ctrl-l  lazygit in that worktree (q returns here)
 #   ctrl-w  new tmux window in it, named after the ticket
 #   ctrl-y  copy its path
+#   ctrl-x  retire it: uncommitted work archived, worktree removed, branch deleted if nothing is lost
 #   esc     close
+# worktrees --sweep [-n]   retire every worktree whose PR is merged (-n: only list them)
+# worktrees --retire <path>...   retire these (finish-task calls this)
 # Files list:
 #   j/k     move                            h/l (or arrows)  fold / unfold a folder (h on a file folds its folder)
 #   W / E   fold / unfold all                /  search (esc closes it, enter keeps the filter)
@@ -335,6 +338,88 @@ changes() {
     --bind="ctrl-s:change-preview($self --diff '$wt' '$f' sbs)+change-preview-window(down,75%,border-top)"
 }
 
+# ---- retiring finished worktrees ----
+# Uncommitted work is never just dropped: it goes to $archive/<repo>/<date>-<branch>/ as changes.patch
+# (tracked edits against HEAD), untracked.tgz (new files) and info.txt (how to get it back).
+archive=${WORKTREE_ARCHIVE:-~/Documents/GitHub/.worktree-archive}
+
+# "MERGED <head sha>" / "OPEN <sha>" / "" for the branch's latest PR
+pr_state() {
+  (cd "$1" && gh pr view "$2" --json state,headRefOid -q '.state + " " + .headRefOid' 2>/dev/null) || true
+}
+
+# retire <worktree>: stop its dev server, archive uncommitted work, remove it, delete the branch when nothing
+# on it would be lost (merged with git, or its PR merged at exactly this commit).
+retire() {
+  local wt repo branch head dirty pr dest
+  wt=$(cd "$1" 2>/dev/null && git rev-parse --show-toplevel) || { echo "✗ not a worktree: $1"; return 1; }
+  repo=$(dirname "$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir)")
+  [ "$wt" = "$repo" ] && { echo "✗ $wt is the main checkout, not a worktree"; return 1; }
+  branch=$(git -C "$wt" symbolic-ref -q --short HEAD || true)
+  head=$(git -C "$wt" rev-parse HEAD)
+  dirty=$(git -C "$wt" status --porcelain | wc -l | tr -d ' ')
+  pr=$([ -n "$branch" ] && pr_state "$wt" "$branch")
+  curl -s --max-time 2 -X POST localhost:3333/__branch/stop -d "{\"root\":\"$wt\"}" >/dev/null 2>&1 || true
+  if [ "$dirty" -gt 0 ]; then
+    dest=$archive/$(basename "$repo")/$(date +%F)-$(printf %s "${branch:-$(basename "$wt")}" | tr / -)
+    mkdir -p "$dest"
+    git -C "$wt" diff HEAD --binary >"$dest/changes.patch"
+    (cd "$wt" && git ls-files -o --exclude-standard -z | tar --null -T - -czf "$dest/untracked.tgz")
+    cat >"$dest/info.txt" <<EOF
+worktree  $wt
+repo      $repo
+branch    ${branch:-(detached)}
+head      $head
+archived  $(date '+%F %T')
+pr        ${pr:-none}
+
+$(git -C "$wt" status --short)
+
+restore:
+  git -C $repo worktree add <path> ${branch:-$head}
+  cd <path> && git apply $dest/changes.patch && tar xzf $dest/untracked.tgz
+EOF
+    echo "  archived $dirty uncommitted file(s) to $dest"
+  fi
+  git -C "$repo" worktree remove --force "$wt" || { echo "✗ could not remove $wt"; return 1; }
+  echo "✓ removed $wt"
+  [ -n "$branch" ] || return 0
+  if [ "$dirty" -gt 0 ]; then
+    echo "  kept branch $branch (the archived patch applies on it)"
+  elif git -C "$repo" branch -d "$branch" >/dev/null 2>&1; then
+    echo "  deleted branch $branch"
+  elif [ "${pr%% *}" = MERGED ] && [ "${pr#* }" = "$head" ]; then
+    git -C "$repo" branch -D "$branch" >/dev/null && echo "  deleted branch $branch (its PR merged at this commit)"
+  else
+    echo "  kept branch $branch (has commits that are not in a merged PR)"
+  fi
+}
+
+# sweep [-n]: retire every worktree whose branch's PR is merged, in every repo with worktrees; -n only lists.
+# Worktrees whose folder is gone are pruned. Main checkouts are never touched.
+sweep() {
+  local dry=${1:-} repo path branch pr n=0
+  for repo in $(repos ''); do
+    [ "$dry" = -n ] || git -C "$repo" worktree prune
+    while IFS=$'\t' read -r path branch; do
+      [ "$path" = "$repo" ] || [ -z "$branch" ] || [ ! -d "$path" ] && continue
+      pr=$(pr_state "$path" "$branch")
+      [ "${pr%% *}" = MERGED ] || continue
+      n=$((n + 1))
+      if [ "$dry" = -n ]; then echo "would retire $path ($branch, PR merged)"; else retire "$path"; fi
+    done < <(git -C "$repo" worktree list --porcelain | awk '/^worktree /{p=substr($0,10); b=""} /^branch /{b=substr($0,19)} /^$/{print p "\t" b}')
+  done
+  [ "$n" -gt 0 ] || echo "no worktrees with merged PRs"
+}
+
+retire_ask() {
+  printf '\nretire %s?\nuncommitted work is archived to %s first. [y/N] ' "$1" "$archive"
+  read -r a </dev/tty
+  [ "$a" = y ] || [ "$a" = Y ] || return 0
+  retire "$1"
+  printf 'enter to continue'; read -r _ </dev/tty
+}
+
 browse() {
   local wt=$1
   local k binds=()
@@ -364,16 +449,20 @@ case ${1:-} in
   --log) git -C "$2" log --oneline --color "$(base_of "$2")..HEAD"; exit;;
   --diff) diff_one "$2" "$3" "${4:-}"; exit;;
   --browse) browse "$2"; exit;;
+  --retire) shift; for w in "$@"; do retire "$w"; done; exit;;
+  --retire-ask) retire_ask "$2"; exit;;
+  --sweep) sweep "${2:-}"; exit;;
 esac
 
 repo=${1:-}
 list "$repo" | fzf --ansi --delimiter='\t' --with-nth=2 --no-sort --layout=reverse --cycle --header-lines=1 \
   --prompt='worktree> ' \
-  --header='enter changed files · ctrl-l lazygit · ctrl-w tmux window · ctrl-y copy path · esc close' \
+  --header='enter changed files · ctrl-l lazygit · ctrl-w tmux window · ctrl-y copy path · ctrl-x retire · esc close' \
   --preview="$self --files {1} | cut -f2; echo; $self --log {1}" \
   --preview-window='down,45%,border-top' \
   --bind='page-down:preview-down,page-up:preview-up' \
   --bind="enter:execute($self --browse {1})+reload($self --list '$repo')" \
   --bind="ctrl-l:execute(lazygit -p {1})+reload($self --list '$repo')" \
   --bind="ctrl-w:execute-silent(tmux new-window -c {1} -n \"\$(basename {1})\")+abort" \
-  --bind='ctrl-y:execute-silent(printf %s {1} | pbcopy)'
+  --bind='ctrl-y:execute-silent(printf %s {1} | pbcopy)' \
+  --bind="ctrl-x:execute($self --retire-ask {1})+reload($self --list '$repo')"
