@@ -59,6 +59,8 @@ list() {
           IFS=$'\t' read -r status title < <(jq -r --arg k "$key" '.[$k] // {} | [(.status // ""), (.title // "")] | @tsv' "$tasks")
         fi
         dirty=$(git -C "$path" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+        # the repo's main checkout sitting clean on master/main is not work in progress: hide it
+        [ "$path" = "$repo" ] && [ "$branch" = "${base#origin/}" ] && [ "$dirty" -eq 0 ] && continue
         ahead=$(git -C "$path" rev-list --count "$base..HEAD" 2>/dev/null || echo 0)
         port=$(printf '%s\n' "$ports" | awk -F'\t' -v p="$path" '$1 == p {print ":" $2}')
         # ticket lowercased: hpnl-13242/localized-promo-prices
