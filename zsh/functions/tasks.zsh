@@ -60,10 +60,16 @@ tasks() {
       (( ${#cfiles} )) && cm=$(cat "${(@)cfiles}" | jq -cs 'map(select(.status != "resolved")) | group_by(.key) | map({key: .[0].key, value: {open: map(select(.status == "open")) | length, working: map(select(.status == "working")) | length}}) | from_entries' 2>/dev/null || echo '{}')
       # draft or not per open PR (GitHub, refreshed every 2 min in the background)
       _tasks_prs_fetch
-      local dr='{}'; [[ -s $_TASKS_PR_DRAFTS ]] && dr=$(<$_TASKS_PR_DRAFTS)
-      jq -r --argjson w "$cols" --argjson lim "${_TASKS_LIMIT:-0}" --argjson cm "$cm" --argjson dr "$dr" "$lib"'
+      local gp='{}'; [[ -s $_TASKS_PR_DRAFTS ]] && gp=$(<$_TASKS_PR_DRAFTS)
+      jq -r --argjson w "$cols" --argjson lim "${_TASKS_LIMIT:-0}" --argjson cm "$cm" --argjson gp "$gp" "$lib"'
+        ($gp.drafts // {}) as $dr
+        # every open PR of yours whose title carries the task key is listed under it, recorded or not
+        | map_values(. as $t | ((.prs // []) | if length == 0 and $t.pr then [{pr: $t.pr}] else . end) as $p
+            | (($gp.byKey // {})[.key] // []) as $found
+            | .prs = $p + [$found[] | select(. as $u | $p | map(.pr) | index($u) | not) | {pr: .}]
+            | if (.prs | length) == 1 and (.pr | not) then .pr = .prs[0].pr else . end)
         # a PR the user marked ready counts as ready_for_review even before watch-pr notices
-        map_values(if (.status | IN("review", "human_review"))
+        | map_values(if (.status | IN("review", "human_review"))
                       and ([(.prs // [{pr: .pr}])[] | select(.pr and (.mergedAt | not)) | $dr[.pr]] as $d
                            | ($d | length) > 0 and all($d[]; . == false))
                    then .status = "ready_for_review" else . end)
@@ -107,7 +113,9 @@ tasks() {
           # several PRs: one line each with its branch and CI state; one PR: its CI line from watch-pr
           + (if $multi then
               # merged (recorded, or the ci line from watch-pr says so): green tick, the rest struck through
-              [.prs[] | ("PR #" + (.pr | prnum) + (if .branch then " · " + .branch else "" end)) as $head
+              [.prs[] | (((.pr | capture("github.com/[^/]+/(?<r>[^/]+)/pull")?.r) // "hpanel") as $repo
+                   | "PR " + (if $repo == "hpanel" then "" else $repo end) + "#" + (.pr | prnum)
+                     + (if .branch then " · " + .branch else "" end)) as $head
                 | if .mergedAt or ((.ci // "") | test("^merged"; "i")) then
                     "\n  " + c("32") + "✔ " + reset + dim + c("9") + ($head + " · " + (.ci // "merged") | cut($w - 6)) + reset
                   else
@@ -139,7 +147,10 @@ tasks() {
   esac
 }
 
-# ---- draft or ready, per open task PR: { "<pr url>": isDraft } ----
+# ---- your open PRs on GitHub (any repo), one search every 2 min in the background ----
+# { drafts: { "<pr url>": isDraft }, byKey: { "HPNL-1234": ["<pr url>", ...] } }; the key comes from the PR
+# title (the repo convention ends it with the ticket key). Shows a task's split PRs even when no session
+# recorded them in the tracker, and whether each one is still a draft.
 _TASKS_PR_DRAFTS=~/.cache/tasks-pr-drafts.json
 _tasks_prs_fetch() {
   local c=$_TASKS_PR_DRAFTS
@@ -147,13 +158,11 @@ _tasks_prs_fetch() {
   (( EPOCHSECONDS - $(zstat +mtime "$c" 2>/dev/null || echo 0) < 120 )) && return
   [[ -e $c.lock ]] && (( EPOCHSECONDS - $(zstat +mtime "$c.lock" 2>/dev/null || echo 0) < 60 )) && return
   mkdir -p ${c:h}; : > $c.lock
-  ( local u out='{}' d
-    for u in ${(f)"$(jq -r '.[] | select(.status | IN("review", "human_review", "ready_for_review"))
-                     | (.prs // [{pr: .pr}])[] | select(.pr and (.mergedAt | not)) | .pr' $_TASKS_DIR/tasks.json 2>/dev/null)"}; do
-      [[ $u == https://github.com/* ]] || continue
-      d=$(gh pr view "$u" --json isDraft -q .isDraft 2>/dev/null) && out=$(jq -c --arg u "$u" --argjson d "$d" '.[$u] = $d' <<< "$out")
-    done
-    print -r -- "$out" > $c.tmp && mv $c.tmp $c
+  ( gh search prs --author @me --state open --limit 100 --json url,title,isDraft 2>/dev/null \
+      | jq -c '{drafts: (map({key: .url, value: .isDraft}) | from_entries),
+                byKey: ([.[] | {url, k: ([.title | scan("[A-Za-z][A-Za-z0-9]+-[0-9]+")] | last | ascii_upcase?)}
+                         | select(.k) ] | group_by(.k) | map({key: .[0].k, value: map(.url)}) | from_entries)}' > $c.tmp \
+      && [[ -s $c.tmp ]] && mv $c.tmp $c
     rm -f $c.lock ) &!
 }
 
