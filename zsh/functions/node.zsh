@@ -65,3 +65,16 @@ nodev() {
       ;;
   esac
 }
+
+# ---- gca: refresh the Google Artifact Registry tokens in ~/.npmrc (what `npm run auth:gca` does) ----
+# google-artifactregistry-auth 3.5.0 (latest) crashes on Node 26 (its yargs 17 is CJS in an ESM package),
+# so it runs on the newest installed Node below 26. Run it from the repo whose .npmrc names the registry
+# (default: ~/Documents/GitHub/hpanel when the current directory has no .npmrc).
+gca() {
+  local dir=/usr/local/n/versions/node v
+  v=$(ls $dir 2>/dev/null | sort -V | awk -F. '$1 < 26' | tail -1)
+  [ -n "$v" ] || { echo "❌ no Node below 26 installed: nodev 24"; return 1; }
+  local repo=$PWD; [ -f .npmrc ] || repo=~/Documents/GitHub/hpanel
+  echo "google-artifactregistry-auth on node $v in $repo"
+  ( cd "$repo" && PATH=$dir/$v/bin:$PATH npx -y google-artifactregistry-auth "$@" ) && echo "✓ tokens refreshed"
+}
