@@ -113,7 +113,7 @@ tasks() {
           # several PRs: one line each with its branch and CI state; one PR: its CI line from watch-pr
           + (if $multi then
               # merged (recorded, or the ci line from watch-pr says so): green tick, the rest struck through
-              [.prs[] | (((.pr | capture("github.com/[^/]+/(?<r>[^/]+)/pull")?.r) // "hpanel") as $repo
+              [.prs[] | (((.pr | try capture("github.com/[^/]+/(?<r>[^/]+)/pull").r catch null) // "hpanel") as $repo
                    | "PR " + (if $repo == "hpanel" then "" else $repo end) + "#" + (.pr | prnum)
                      + (if .branch then " · " + .branch else "" end)) as $head
                 | if .mergedAt or ((.ci // "") | test("^merged"; "i")) then
